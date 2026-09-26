@@ -49,5 +49,10 @@
         }
       }
     }
+  },
+  "services": {
+    "read_properties": {
+      "service": "mdi:magnify-scan"
+    }
   }
 }

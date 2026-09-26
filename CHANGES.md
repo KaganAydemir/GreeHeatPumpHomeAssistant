@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.4.1 (2026-09-26)
+
+No changes in behaviour. This release adds automated testing and publishes versions as GitHub releases.
+
+### Added
+
+- **Tests** that run the integration inside a real Home Assistant against a fake heat pump. The fake speaks the Gree protocol and can drop requests, reply late or ignore commands. They cover setup, every mode combination, commands and their read-back, overlapping commands, the Read properties action, diagnostics, and setup and reconfigure forms.
+- **GitHub Actions** runs the tests, Home Assistant's `hassfest` check and the HACS check on every push and weekly.
+- **GitHub releases:** pushing a version tag publishes a release with that version's notes, so HACS shows proper version numbers.
+
+### Changed
+
+- The Read properties action has an icon, as Home Assistant now expects.
+- The manifest's keys are in the order Home Assistant's checks expect.
+
 ## 4.4.0 (2026-09-26)
 
 ### Changed

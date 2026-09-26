@@ -53,6 +53,28 @@ On the device page, open ⋮ → **Download diagnostics** for a file with the he
 
 The `greehp.read_properties` action (Developer Tools → Actions) reads any property names from the heat pump and returns what it answers. It only reads, so it can't change anything. The heat pump leaves out names it doesn't know, so every name that comes back with a value is a real property.
 
+## Development
+
+### Tests
+
+The tests run the integration inside a real Home Assistant, against a fake heat pump on localhost that speaks the Gree protocol. The fake can drop requests, reply late or ignore commands, like the real unit sometimes does. They need Python 3.14 (Home Assistant doesn't support Windows, so use Linux, WSL or Docker there):
+
+```bash
+pip install -r requirements_test.txt
+pytest
+```
+
+`requirements_test.txt` pins the Home Assistant version the tests run against. Bump it to test against a newer release.
+
+GitHub Actions runs the tests, Home Assistant's `hassfest` check and the HACS check on every push, and weekly to catch breakage from new Home Assistant releases.
+
+### Releases
+
+1. Set `version` in `custom_components/greehp/manifest.json` and add a `## <version>` section to `CHANGES.md`.
+2. Commit, then tag and push: `git tag v<version> && git push origin v<version>`.
+
+The release workflow checks that the tag matches the manifest and publishes a GitHub release with that version's notes from `CHANGES.md`. HACS shows releases as versions.
+
 ## Changes
 
 See [CHANGES.md](CHANGES.md) for the rewrite from the original air-conditioner integration and what has been tested.

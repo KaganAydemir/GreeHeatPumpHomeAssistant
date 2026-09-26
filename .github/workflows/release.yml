@@ -1,0 +1,43 @@
+name: Release
+
+# Push a tag like v4.5.0 to publish a GitHub release. HACS shows releases as versions.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the manifest version
+        run: |
+          manifest=$(python3 -c "import json; print(json.load(open('custom_components/greehp/manifest.json'))['version'])")
+          if [ "v$manifest" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match manifest version $manifest"
+            exit 1
+          fi
+
+      - name: Take the release notes from CHANGES.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # The section from "## <version>" up to the next "## " heading
+          awk -v v="$version" '
+            $0 ~ "^## " v "( |$)" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGES.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::No section for $version in CHANGES.md"
+            exit 1
+          fi
+          cat notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag

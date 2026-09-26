@@ -30,6 +30,10 @@ GCM_ADD = b"qualcomm-test"
 GENERIC_GREE_DEVICE_KEY = "a3K8Bx%2r8Y7#xDh"
 GENERIC_GREE_DEVICE_KEY_GCM = b"{yxAHAY_Lm6pbC/<"
 
+# The device answers within ~50ms or not at all, so resend quickly: 1.0s, 1.2s, 1.4s, ...
+RESEND_AFTER = 1.0
+RESEND_BACKOFF = 0.2
+
 
 class _ReplyProtocol(asyncio.DatagramProtocol):
     """Queues datagrams arriving from one host."""
@@ -102,8 +106,7 @@ async def FetchResult(make_cipher, ip_addr, port, json_data, encryption_version=
     try:
         for attempt in range(max_retries):
             transport.sendto(payload, (ip_addr, port))
-            # The device answers within ~50ms or not at all, so resend quickly: 1.0s, 1.2s, 1.4s, ...
-            deadline = loop.time() + 1 + attempt * 0.2
+            deadline = loop.time() + RESEND_AFTER + attempt * RESEND_BACKOFF
 
             while (remaining := deadline - loop.time()) > 0:
                 try:

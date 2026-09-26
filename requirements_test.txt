@@ -1,0 +1,3 @@
+# Pinned to the Home Assistant version it tests against (2026.9.3). Bump together.
+pytest-homeassistant-custom-component==0.13.366
+pycryptodome
