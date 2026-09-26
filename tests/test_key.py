@@ -46,6 +46,17 @@ async def test_key_change_while_running_heals_in_one_poll(hass: HomeAssistant, e
     assert hass.states.get(entity_id(hass, "water_heater", "hot_water")).state == "heat_pump"
 
 
+async def test_ignored_poll_retried_when_bind_answers(hass: HomeAssistant, entry, pump: FakeHeatPump) -> None:
+    """Seen on a real unit: every attempt of one poll ignored, then a bind answered at once, same key.
+    The heat pump is clearly reachable, so the poll is retried instead of marking entities unavailable."""
+    pump.drop = set(range(pump.requests + 1, pump.requests + 9))  # all 8 attempts of the poll
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert entry.runtime_data.last_update_success
+    assert hass.states.get(entity_id(hass, "water_heater", "hot_water")).state == "heat_pump"
+    assert entry.data["encryption_key"] == DEVICE_KEY
+
+
 async def test_outage_does_not_touch_key(hass: HomeAssistant, entry, pump: FakeHeatPump) -> None:
     pump.drop = set(range(pump.requests + 1, pump.requests + 100))
     await entry.runtime_data.async_refresh()

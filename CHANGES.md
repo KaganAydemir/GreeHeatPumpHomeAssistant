@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.7.1 (2026-09-27)
+
+### Fixed
+
+- **A poll the heat pump ignored no longer makes the entities unavailable when it's clearly reachable.** On a real unit, the heat pump ignored all 8 attempts of one poll, then answered a bind straight away with the same key. The integration used to report the poll as failed anyway, so entities showed "unavailable" until the next poll 30 seconds later. Now, whenever that bind gets an answer, the poll is tried once more before giving up.
+
 ## 4.7.0 (2026-09-27)
 
 ### Added
@@ -164,7 +170,7 @@ Existing config entries keep working, so there's no need to add the device again
 
 ## Protocol notes
 
-These properties were found by capturing the Gree app's traffic and confirmed on one Gree air-to-water heat pump with a hot water tank. Other models may differ, and `greehp.read_properties` can check what a unit supports.
+These properties were found by capturing the Gree app's traffic and confirmed on one Gree air-to-water heat pump with a hot water tank (model ID 9300, firmware V5.0.0.0). Other models may differ, and `greehp.read_properties` can check what a unit supports.
 
 | Property | Meaning | Values |
 |---|---|---|
@@ -187,7 +193,8 @@ These properties were found by capturing the Gree app's traffic and confirmed on
 - **Unknown names:** the heat pump leaves them out of its reply instead of answering `0`, so any name that returns a value is a real property.
 - **No outside temperature:** it isn't reported over Wi-Fi, even though the unit's own display shows it. `OutEnvTem`, which Gree air conditioners use, isn't supported, and the Gree app doesn't request an outside temperature. A weather integration or separate sensor can fill the gap.
 - **Commands:** they include `Pow`, `Mod`, `WatBoxTemSet` and `HeWatOutTemSet`, plus whatever is changing. A successful command reply looks like `{"t":"res","r":200,"opt":[…],"p":[…],"val":[…]}`.
-- **Dropped requests:** the heat pump sometimes ignores a request completely, and retries handle this.
+- **Dropped requests:** the heat pump sometimes ignores a request completely, and retries handle this. Once it ignored all 8 attempts of a status request, then immediately answered a bind. Status requests are byte-for-byte identical each time, so it may partly ignore repeats; this isn't confirmed.
+- **Scans:** it answers a discovery scan sent directly to its address, not only broadcasts. It reports `"model": "gree"`, so the model ID (`mid`) and firmware version (`ver`) are the useful fields.
 
 ## Known issues and limitations
 

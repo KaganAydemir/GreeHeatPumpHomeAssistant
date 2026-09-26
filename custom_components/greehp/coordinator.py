@@ -35,7 +35,7 @@ COMMAND_ATTEMPTS = 3
 READBACK_DELAY = 1.0
 # The command is already acknowledged, so the read-back is a quick check rather than a full poll
 READBACK_RETRIES = 3
-# Attempts for the bind that checks whether the device's key changed after a poll got no reply
+# Attempts for the bind after a poll got no reply, and for the poll retried after it
 REBIND_RETRIES = 3
 
 
@@ -57,21 +57,24 @@ class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 return await self.client.get(POLLED_PROPS)
             except TimeoutError as err:
-                # No reply at all. Besides an outage, this is what a changed key looks like: the device
-                # ignores requests it can't decrypt. Binding still works, so check for a new key.
-                if await self._rebind():
+                # No reply at all. That's an outage, a changed key (the device ignores requests it can't
+                # decrypt), or the device ignoring a run of requests while otherwise fine. Binding tells
+                # these apart: it still works with a changed key, and picks up the new one.
+                if await self._bind_answers():
+                    # Reachable, and now with the current key: worth one more try before giving up
                     try:
-                        return await self.client.get(POLLED_PROPS)
+                        return await self.client.get(POLLED_PROPS, max_retries=REBIND_RETRIES)
                     except Exception as retry_err:
                         raise UpdateFailed(f"Error communicating with heat pump: {retry_err}") from retry_err
                 raise UpdateFailed(f"Error communicating with heat pump: {err}") from err
             except Exception as err:
                 raise UpdateFailed(f"Error communicating with heat pump: {err}") from err
 
-    async def _rebind(self) -> bool:
-        """Bind to pick up a new key. Returns True if the key changed."""
+    async def _bind_answers(self) -> bool:
+        """Bind, picking up a new key if there is one. Returns True if the device answered."""
         try:
-            return await self.client.bind(max_retries=REBIND_RETRIES)
+            await self.client.bind(max_retries=REBIND_RETRIES)
+            return True
         except WrongDeviceError as err:
             raise UpdateFailed(f"{err}. If the heat pump's IP address changed, use Reconfigure") from err
         except Exception as err:
