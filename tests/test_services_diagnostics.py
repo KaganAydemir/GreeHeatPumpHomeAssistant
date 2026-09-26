@@ -40,7 +40,9 @@ async def test_read_properties_falls_back_to_one_at_a_time(hass: HomeAssistant, 
 
 
 async def test_diagnostics(hass: HomeAssistant, entry, pump: FakeHeatPump) -> None:
+    await hass.async_block_till_done(wait_background_tasks=True)
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["device_description"]["ver"] == "V1.2.1"
     text = json.dumps(diagnostics)
     for secret in (DEVICE_KEY, MAC, "127.0.0.1"):
         assert secret not in text, secret

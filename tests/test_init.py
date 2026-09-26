@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_OFF, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from custom_components.greehp.const import DOMAIN
 
@@ -118,4 +118,29 @@ async def test_binds_when_no_key_stored(hass: HomeAssistant, pump: FakeHeatPump)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     assert hass.states.get(entity_id(hass, "water_heater", "hot_water")).state == "heat_pump"
+    await hass.config_entries.async_unload(config_entry.entry_id)
+
+
+async def test_device_page_shows_firmware(hass: HomeAssistant, pump: FakeHeatPump) -> None:
+    config_entry = make_entry(pump)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), config_entry.entry_id)
+    assert device.sw_version == "V1.2.1"
+    assert device.model_id == "10001"
+    assert device.model == "Heat pump"  # the unit only says "gree", so the generic model stays
+    await hass.config_entries.async_unload(config_entry.entry_id)
+
+
+async def test_no_scan_reply_leaves_device_page(hass: HomeAssistant, pump: FakeHeatPump) -> None:
+    pump.answer_scans = False
+    config_entry = make_entry(pump)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert config_entry.state is ConfigEntryState.LOADED
+    (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), config_entry.entry_id)
+    assert device.sw_version is None
+    assert device.model == "Heat pump"
     await hass.config_entries.async_unload(config_entry.entry_id)

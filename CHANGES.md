@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.7.0 (2026-09-27)
+
+### Added
+
+- **Firmware version on the device page.** At startup, the integration asks the heat pump to describe itself, the same way discovery does but sent only to its address. It shows the reported firmware version and model ID on the device page. The model name is only replaced when the unit reports a real one; many just say "gree". This runs in the background, so startup isn't slowed, and a heat pump that doesn't answer is simply left as it was.
+- **Diagnostics include the heat pump's description,** with its MAC address redacted.
+
 ## 4.6.0 (2026-09-27)
 
 ### Fixed

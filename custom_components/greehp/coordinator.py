@@ -49,6 +49,8 @@ class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # lock for every command and poll stops two commands (or a command and a slow poll carrying old
         # values) from interleaving and undoing each other's changes.
         self._lock = asyncio.Lock()
+        # The heat pump's own description (firmware version etc.), if it answered a scan
+        self.device_description: dict[str, Any] | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         async with self._lock:

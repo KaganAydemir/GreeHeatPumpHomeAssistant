@@ -185,6 +185,19 @@ async def async_bind(mac: str, host: str, port: int, encryption_version: int = 1
 # --- Discovery -----------------------------------------------------------
 
 
+async def async_scan(host: str, port: int = DISCOVERY_PORT, max_retries: int = 3) -> dict[str, Any]:
+    """Ask one device to describe itself (the reply to a discovery scan, sent to its address only).
+
+    Returns the device's own description, e.g. {"t": "dev", "mac": ..., "ver": "V1.2.1", "mid": ...}.
+    Scan replies use the generic ECB key. Raises like async_request if the device doesn't answer.
+    """
+    generic_key = GENERIC_GREE_DEVICE_KEY.encode()
+    info = await async_request(lambda: AES.new(generic_key, AES.MODE_ECB), host, port, DISCOVERY_MESSAGE.decode(), 1, max_retries)
+    if info.get("t") != "dev":
+        raise ConnectionError(f"Unexpected reply to scan from {host}: {info.get('t')}")
+    return info
+
+
 class _CollectProtocol(asyncio.DatagramProtocol):
     """Collects every datagram that arrives, with its sender."""
 

@@ -57,6 +57,7 @@ class FakeHeatPump(asyncio.DatagramProtocol):
     status_delays: per-status-request reply delays, used in order (overrides reply_delay).
     garbage_first: send an undecodable packet before each real reply.
     result_code: the "r" code in command replies; anything but 200 means rejected.
+    answer_scans: whether to answer discovery scans.
     encryption_version: 1 (ECB) or 2 (GCM).
     """
 
@@ -74,6 +75,7 @@ class FakeHeatPump(asyncio.DatagramProtocol):
         self.status_delays: list[float] = []
         self.garbage_first = False
         self.result_code = 200
+        self.answer_scans = True
         self.requests = 0
         self.commands = 0
         self.reads = 0
@@ -108,8 +110,10 @@ class FakeHeatPump(asyncio.DatagramProtocol):
         if self.requests in self.drop:
             return
         if data == DISCOVERY_MESSAGE:
+            if not self.answer_scans:
+                return
             # Scan replies are always encrypted with the generic ECB key
-            info = {"t": "dev", "mac": self.mac, "name": "", "brand": "gree", "model": "gree", "ver": "V1.2.1"}
+            info = {"t": "dev", "cid": self.mac, "mac": self.mac, "mid": "10001", "name": "", "brand": "gree", "model": "gree", "ver": "V1.2.1"}
             pack = base64.b64encode(AES.new(GENERIC_GREE_DEVICE_KEY.encode(), AES.MODE_ECB).encrypt(pad(json.dumps(info)).encode()))
             self._transport.sendto(json.dumps({"t": "pack", "pack": pack.decode()}).encode(), addr)
             return
