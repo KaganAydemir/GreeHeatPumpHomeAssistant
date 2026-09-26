@@ -1,10 +1,12 @@
 {
   "config": {
     "error": {
-      "cannot_connect": "Cihaza bağlanılamadı. Ağ bağlantısını kontrol edip tekrar deneyin."
+      "cannot_connect": "Cihaza bağlanılamadı. Ağ bağlantısını kontrol edip tekrar deneyin.",
+      "wrong_device": "Bu adreste farklı bir Gree cihazı yanıt verdi. IP adresini kontrol edin."
     },
     "abort": {
-      "already_configured": "Bu MAC adresine sahip bir cihaz zaten yapılandırılmış."
+      "already_configured": "Bu MAC adresine sahip bir cihaz zaten yapılandırılmış.",
+      "reconfigure_successful": "Isı pompasının adresi güncellendi."
     },
     "step": {
       "user": {
@@ -39,6 +41,14 @@
           "encryption_key": "Şifreleme anahtarı",
           "uid": "UID",
           "encryption_version": "Şifreleme sürümü"
+        }
+      },
+      "reconfigure": {
+        "title": "Adresi değiştir",
+        "description": "Isı pompasının yeni IP adresini girin. Kaydetmeden önce kontrol edilir: bu adresteki cihaz yanıt vermeli ve aynı ısı pompası olmalıdır.",
+        "data": {
+          "host": "IP adresi",
+          "port": "Port"
         }
       }
     }

@@ -42,7 +42,7 @@ Copy `custom_components/greehp` into `/config/custom_components/` and restart Ho
 
 ## Setup
 
-Settings → Devices & services → Add integration → **Gree Heat Pump**, then choose automatic discovery or enter the IP and MAC address by hand. Give the heat pump a fixed IP address in your router so it doesn't change.
+Settings → Devices & services → Add integration → **Gree Heat Pump**, then choose automatic discovery or enter the IP and MAC address by hand. Give the heat pump a fixed IP address in your router so it doesn't change. If the address does change, use **Reconfigure** on the integration (⋮ menu) to enter the new one without setting it up again.
 
 ## Diagnostics
 

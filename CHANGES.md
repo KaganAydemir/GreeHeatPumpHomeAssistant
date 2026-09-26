@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.3.0 (2026-09-26)
+
+### Added
+
+- **Reconfigure** (Settings → Devices & services → Gree Heat Pump → ⋮ → Reconfigure) changes the heat pump's IP address or port without removing and re-adding it, so entities, history and automations stay as they are. The new address is checked before saving:
+  - It must be the same heat pump, confirmed by the MAC address in its reply. Otherwise the form reports that a different device answered.
+  - The heat pump must answer a normal read with the configured encryption key. Otherwise the form reports that it can't connect.
+
+### Changed
+
+- The encryption key is no longer written to the debug log when binding to the heat pump.
+
 ## 4.2.0 (2026-09-26)
 
 ### Added

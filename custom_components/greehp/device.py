@@ -9,9 +9,13 @@ from typing import Any
 
 from Crypto.Cipher import AES
 
-from .gree_protocol import EncryptGCM, FetchResult, GetDeviceKey, GetDeviceKeyGCM, GetGCMCipher, Pad, RequestStats
+from .gree_protocol import BindDevice, EncryptGCM, FetchResult, GetDeviceKey, GetDeviceKeyGCM, GetGCMCipher, Pad, RequestStats
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class WrongDeviceError(Exception):
+    """A different Gree device answered at the configured address."""
 
 
 class GreeHeatPumpClient:
@@ -51,6 +55,20 @@ class GreeHeatPumpClient:
         if not key:
             raise ConnectionError(f"Could not bind to device at {self.host}")
         self._key = key
+
+    async def verify(self, max_retries: int = 4) -> None:
+        """Check the device at this address is the configured one and answers reads.
+
+        Raises WrongDeviceError if another device answers, or another exception if none does.
+        Uses fewer attempts than polling so a form doesn't hang long on a wrong address.
+        """
+        reply = await BindDevice(self.mac, self.host, self.port, self.encryption_version, max_retries)
+        if (found := str(reply.get("mac", "")).lower()) != self.mac:
+            raise WrongDeviceError(f"Device at {self.host} has MAC {found}, expected {self.mac}")
+        if not self._key:
+            self._key = reply["key"].encode()
+        # A normal read with the configured key confirms that key still works
+        await self.get(["Pow"], max_retries=max_retries)
 
     async def _request(self, payload: dict[str, Any], max_retries: int = 8) -> dict[str, Any]:
         await self._ensure_key()

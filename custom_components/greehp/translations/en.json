@@ -1,10 +1,12 @@
 {
   "config": {
     "error": {
-      "cannot_connect": "Unable to connect to the device. Please check the network connection and try again."
+      "cannot_connect": "Unable to connect to the device. Please check the network connection and try again.",
+      "wrong_device": "A different Gree device answered at that address. Check the IP address."
     },
     "abort": {
-      "already_configured": "A device with this MAC address is already configured."
+      "already_configured": "A device with this MAC address is already configured.",
+      "reconfigure_successful": "The heat pump's address was updated."
     },
     "step": {
       "user": {
@@ -39,6 +41,14 @@
           "encryption_key": "Encryption key",
           "uid": "UID",
           "encryption_version": "Encryption version"
+        }
+      },
+      "reconfigure": {
+        "title": "Change address",
+        "description": "Enter the heat pump's new IP address. It's checked before saving: the device at that address must answer, and it must be the same heat pump.",
+        "data": {
+          "host": "IP address",
+          "port": "Port"
         }
       }
     }

@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
 )
+from .device import GreeHeatPumpClient, WrongDeviceError
 from .gree_protocol import test_connection, discover_gree_devices, detect_device_encryption
 
 _LOGGER = logging.getLogger(__name__)
@@ -207,3 +208,38 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(step_id="manual", data_schema=data_schema, errors=errors)
+
+    async def async_step_reconfigure(self, user_input: dict | None = None) -> FlowResult:
+        """Change the heat pump's address without removing and re-adding it."""
+        entry = self._get_reconfigure_entry()
+        errors = {}
+
+        if user_input is not None:
+            data = entry.data
+            client = GreeHeatPumpClient(
+                host=user_input[CONF_HOST],
+                port=user_input[CONF_PORT],
+                mac=data[CONF_MAC],
+                encryption_version=data.get(CONF_ENCRYPTION_VERSION, 1),
+                encryption_key=data.get(CONF_ENCRYPTION_KEY),
+                uid=data.get(CONF_UID),
+            )
+            try:
+                await client.verify()
+            except WrongDeviceError as err:
+                _LOGGER.debug("Reconfigure: %s", err)
+                errors["base"] = "wrong_device"
+            except Exception as err:
+                _LOGGER.debug("Reconfigure: cannot reach %s: %s", user_input[CONF_HOST], err)
+                errors["base"] = "cannot_connect"
+            else:
+                return self.async_update_reload_and_abort(entry, data_updates=user_input)
+
+        defaults = user_input or entry.data
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
+                vol.Required(CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)): int,
+            }
+        )
+        return self.async_show_form(step_id="reconfigure", data_schema=data_schema, errors=errors)

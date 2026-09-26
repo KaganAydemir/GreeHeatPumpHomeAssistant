@@ -167,21 +167,29 @@ async def test_connection(config):
         return False
 
 
+async def BindDevice(mac_addr, ip_addr, port, encryption_version=1, max_retries=8):
+    """Bind to a device and return its reply, which includes its "key" and its own "mac". Raises on failure."""
+    _LOGGER.debug(f"Binding to device at {ip_addr} (encryption version {encryption_version})")
+    if encryption_version == 1:
+        cipher = AES.new(GENERIC_GREE_DEVICE_KEY.encode("utf8"), AES.MODE_ECB)
+        pack = base64.b64encode(cipher.encrypt(Pad(f'{{"mac":"{mac_addr}","t":"bind","uid":0}}').encode("utf8"))).decode("utf-8")
+        payload = f'{{"cid": "app","i": 1,"pack": "{pack}","t":"pack","tcid":"{mac_addr}","uid": 0}}'
+        make_cipher = lambda: AES.new(GENERIC_GREE_DEVICE_KEY.encode("utf8"), AES.MODE_ECB)  # noqa: E731
+    else:
+        pack, tag = EncryptGCM(GENERIC_GREE_DEVICE_KEY_GCM, f'{{"cid":"{mac_addr}", "mac":"{mac_addr}","t":"bind","uid":0}}')
+        payload = f'{{"cid": "app","i": 1,"pack": "{pack}","t":"pack","tcid":"{mac_addr}","uid": 0, "tag" : "{tag}"}}'
+        make_cipher = lambda: GetGCMCipher(GENERIC_GREE_DEVICE_KEY_GCM)  # noqa: E731
+    result = await FetchResult(make_cipher, ip_addr, port, payload, encryption_version=encryption_version, max_retries=max_retries)
+    _LOGGER.debug(f"Bind reply: { {k: ('**REDACTED**' if k == 'key' else v) for k, v in result.items()} }")
+    return result
+
+
 async def GetDeviceKey(mac_addr, ip_addr, port, max_retries=8):
-    _LOGGER.debug("Retrieving HVAC encryption key")
-    cipher = AES.new(GENERIC_GREE_DEVICE_KEY.encode("utf8"), AES.MODE_ECB)
-    pack = base64.b64encode(cipher.encrypt(Pad(f'{{"mac":"{mac_addr}","t":"bind","uid":0}}').encode("utf8"))).decode("utf-8")
-    jsonPayloadToSend = f'{{"cid": "app","i": 1,"pack": "{pack}","t":"pack","tcid":"{mac_addr}","uid": 0}}'
     try:
-        result = await FetchResult(lambda: AES.new(GENERIC_GREE_DEVICE_KEY.encode("utf8"), AES.MODE_ECB), ip_addr, port, jsonPayloadToSend, max_retries=max_retries)
-        _LOGGER.debug(f"GetDeviceKey: FetchResult: {result}")
-        key = result["key"].encode("utf8")
+        return (await BindDevice(mac_addr, ip_addr, port, 1, max_retries))["key"].encode("utf8")
     except Exception:
         _LOGGER.debug("Error getting device encryption key!")
         return None
-    else:
-        _LOGGER.debug(f"Fetched device encryption key: {str(key)}")
-        return key
 
 
 def GetGCMCipher(key):
@@ -199,20 +207,11 @@ def EncryptGCM(key, plaintext):
 
 
 async def GetDeviceKeyGCM(mac_addr, ip_addr, port, max_retries=8):
-    _LOGGER.debug("Retrieving HVAC encryption key (GCM)")
-    plaintext = f'{{"cid":"{mac_addr}", "mac":"{mac_addr}","t":"bind","uid":0}}'
-    pack, tag = EncryptGCM(GENERIC_GREE_DEVICE_KEY_GCM, plaintext)
-    jsonPayloadToSend = f'{{"cid": "app","i": 1,"pack": "{pack}","t":"pack","tcid":"{mac_addr}","uid": 0, "tag" : "{tag}"}}'
     try:
-        result = await FetchResult(lambda: GetGCMCipher(GENERIC_GREE_DEVICE_KEY_GCM), ip_addr, port, jsonPayloadToSend, encryption_version=2, max_retries=max_retries)
-        _LOGGER.debug(f"GetDeviceKeyGCM: FetchResult: {result}")
-        key = result["key"].encode("utf8")
+        return (await BindDevice(mac_addr, ip_addr, port, 2, max_retries))["key"].encode("utf8")
     except Exception:
         _LOGGER.debug("Error getting device encryption key!")
         return None
-    else:
-        _LOGGER.debug(f"Fetched device encryption key: {str(key)}")
-        return key
 
 
 async def discover_gree_devices(hass, timeout=5):
