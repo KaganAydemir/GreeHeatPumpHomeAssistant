@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -34,12 +35,17 @@ class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, client: GreeHeatPumpClient, name: str) -> None:
         super().__init__(hass, _LOGGER, name=name, update_interval=SCAN_INTERVAL)
         self.client = client
+        # Commands resend the full base state, so they must be built from the latest data. Holding this
+        # lock for every command and poll stops two commands (or a command and a slow poll carrying old
+        # values) from interleaving and undoing each other's changes.
+        self._lock = asyncio.Lock()
 
     async def _async_update_data(self) -> dict[str, Any]:
-        try:
-            return await self.client.get(POLLED_PROPS)
-        except Exception as err:
-            raise UpdateFailed(f"Error communicating with heat pump: {err}") from err
+        async with self._lock:
+            try:
+                return await self.client.get(POLLED_PROPS)
+            except Exception as err:
+                raise UpdateFailed(f"Error communicating with heat pump: {err}") from err
 
     # --- Derived state -------------------------------------------------
 
@@ -79,22 +85,29 @@ class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_set_values(self, values: dict[str, Any]) -> None:
         """Send values to the device, merged with the current base state."""
+        async with self._lock:
+            await self._send(values)
+        await self.async_request_refresh()
+
+    async def async_set_state(self, space_mode: str | None = None, hot_water: bool | None = None) -> None:
+        """Set space conditioning and/or hot water; unspecified parts keep their current state."""
+        async with self._lock:
+            # Read the current state only once the lock is held, so a command that just finished is included
+            space = self.space_mode if space_mode is None else space_mode
+            dhw = self.hot_water_on if hot_water is None else hot_water
+
+            if space == SPACE_OFF and not dhw:
+                await self._send({PROP_POWER: 0})
+            else:
+                await self._send({PROP_POWER: 1, PROP_MODE: STATE_TO_MODE[(space, dhw)]})
+        await self.async_request_refresh()
+
+    async def _send(self, values: dict[str, Any]) -> None:
+        """Send a command and apply it optimistically. Caller must hold the lock."""
         payload = {k: self.data[k] for k in BASE_COMMAND_PROPS if self.data.get(k) is not None}
         payload.update(values)
         try:
             await self.client.set(payload)
         except Exception as err:
             raise HomeAssistantError(f"Failed to send command to heat pump: {err}") from err
-        # Apply optimistically, then confirm with a fresh read
         self.async_set_updated_data({**self.data, **payload})
-        await self.async_request_refresh()
-
-    async def async_set_state(self, space_mode: str | None = None, hot_water: bool | None = None) -> None:
-        """Set space conditioning and/or hot water; unspecified parts keep their current state."""
-        space = self.space_mode if space_mode is None else space_mode
-        dhw = self.hot_water_on if hot_water is None else hot_water
-
-        if space == SPACE_OFF and not dhw:
-            await self.async_set_values({PROP_POWER: 0})
-        else:
-            await self.async_set_values({PROP_POWER: 1, PROP_MODE: STATE_TO_MODE[(space, dhw)]})

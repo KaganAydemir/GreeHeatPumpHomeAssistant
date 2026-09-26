@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.0.1 (2026-09-26)
+
+### Fixed
+
+- **Commands that happened close together could undo each other.** Every command resends the current setpoints along with the change, and it built them from values read before the other command finished. For example:
+  - Changing the hot water target while turning heating on could lose the new target.
+  - Turning heating and hot water off at the same moment could leave the heat pump on in heating-only mode.
+  - A slow poll that returned old values after a command could make the next command revert it.
+
+  Commands and polls now take turns, and each command works out its values from the latest state.
+
 ## 4.0.0 (2026-09-26)
 
 First release as a heat pump integration. This version is a rewrite of [HomeAssistant-GreeClimateComponent](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent), which was built for Gree air conditioners.
