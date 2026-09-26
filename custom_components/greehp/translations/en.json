@@ -2,7 +2,7 @@
   "config": {
     "error": {
       "cannot_connect": "Unable to connect to the device. Please check the network connection and try again.",
-      "wrong_device": "A different Gree device answered at that address. Check the IP address."
+      "wrong_device": "A different Gree device answered at that address. Check the IP address, and the MAC address if you entered it by hand."
     },
     "abort": {
       "already_configured": "A device with this MAC address is already configured.",

@@ -5,11 +5,12 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from Crypto.Cipher import AES
 
-from .gree_protocol import BindDevice, EncryptGCM, FetchResult, GetDeviceKey, GetDeviceKeyGCM, GetGCMCipher, Pad, RequestStats
+from .gree_protocol import BindDevice, EncryptGCM, FetchResult, GetGCMCipher, Pad, RequestStats
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +30,9 @@ class GreeHeatPumpClient:
         encryption_version: int = 1,
         encryption_key: str | None = None,
         uid: int | None = None,
+        on_key_change: Callable[[str], None] | None = None,
     ) -> None:
+        """on_key_change is called with the new key whenever binding gives a key different from the current one."""
         self.host = host
         self.port = port
         mac = mac.replace(":", "").lower()
@@ -42,19 +45,34 @@ class GreeHeatPumpClient:
         self._key: bytes | None = encryption_key.encode() if encryption_key else None
         self._uid = uid or 0
         self.stats = RequestStats()
+        self._on_key_change = on_key_change
+
+    @property
+    def key(self) -> str | None:
+        return self._key.decode() if self._key else None
+
+    async def bind(self, max_retries: int = 8) -> bool:
+        """Ask the device for its current key and use it. Returns True if the key changed.
+
+        Binding is encrypted with Gree's generic key, so it works even when the stored key is out of date,
+        for example after the Wi-Fi module was reset. Raises WrongDeviceError if another device answers.
+        """
+        if self.encryption_version not in (1, 2):
+            raise ValueError(f"Encryption version {self.encryption_version} is not supported")
+        reply = await BindDevice(self.mac, self.host, self.port, self.encryption_version, max_retries)
+        if (found := str(reply.get("mac", "")).lower()) != self.mac:
+            raise WrongDeviceError(f"Device at {self.host} has MAC {found}, expected {self.mac}")
+        key = reply["key"].encode()
+        if key == self._key:
+            return False
+        self._key = key
+        if self._on_key_change:
+            self._on_key_change(key.decode())
+        return True
 
     async def _ensure_key(self) -> None:
-        if self._key:
-            return
-        if self.encryption_version == 1:
-            key = await GetDeviceKey(self.mac, self.host, self.port)
-        elif self.encryption_version == 2:
-            key = await GetDeviceKeyGCM(self.mac, self.host, self.port)
-        else:
-            raise ValueError(f"Encryption version {self.encryption_version} is not supported")
-        if not key:
-            raise ConnectionError(f"Could not bind to device at {self.host}")
-        self._key = key
+        if not self._key:
+            await self.bind()
 
     async def verify(self, max_retries: int = 4) -> None:
         """Check the device at this address is the configured one and answers reads.
@@ -62,12 +80,14 @@ class GreeHeatPumpClient:
         Raises WrongDeviceError if another device answers, or another exception if none does.
         Uses fewer attempts than polling so a form doesn't hang long on a wrong address.
         """
-        reply = await BindDevice(self.mac, self.host, self.port, self.encryption_version, max_retries)
-        if (found := str(reply.get("mac", "")).lower()) != self.mac:
-            raise WrongDeviceError(f"Device at {self.host} has MAC {found}, expected {self.mac}")
-        if not self._key:
-            self._key = reply["key"].encode()
-        # A normal read with the configured key confirms that key still works
+        try:
+            await self.bind(max_retries)
+        except WrongDeviceError:
+            raise
+        except Exception:
+            # Without a key there's nothing else to try. With one, the device may just not answer binds.
+            if not self._key:
+                raise
         await self.get(["Pow"], max_retries=max_retries)
 
     async def _request(self, payload: dict[str, Any], max_retries: int = 8) -> dict[str, Any]:

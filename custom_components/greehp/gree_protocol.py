@@ -17,11 +17,7 @@ except ImportError:
 from Crypto.Cipher import AES
 
 # Home Assistant imports
-from homeassistant.const import CONF_HOST, CONF_MAC, CONF_PORT
 from homeassistant.components.network import async_get_ipv4_broadcast_addresses
-
-# Local imports
-from .const import CONF_ENCRYPTION_KEY, CONF_ENCRYPTION_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -144,32 +140,6 @@ def Pad(s):
     return s + (aesBlockSize - len(s) % aesBlockSize) * chr(aesBlockSize - len(s) % aesBlockSize)
 
 
-async def test_connection(config):
-    """Test connection to a Gree device."""
-
-    ip_addr = config[CONF_HOST]
-    port = config[CONF_PORT]
-    encryption_version = config[CONF_ENCRYPTION_VERSION]
-    encryption_key = config[CONF_ENCRYPTION_KEY]
-
-    mac_addr = config.get(CONF_MAC).encode().replace(b":", b"").decode("utf-8").lower()
-    if "@" in mac_addr:
-        mac_addr = mac_addr.split("@", 1)[1]
-
-    _LOGGER.debug(f"test_connection: host={ip_addr}, port={port}, mac={mac_addr}, encryption_version={encryption_version}, encryption_key={encryption_key}")
-
-    try:
-        if encryption_version == 1:
-            key = await GetDeviceKey(mac_addr, ip_addr, port)
-        else:
-            key = await GetDeviceKeyGCM(mac_addr, ip_addr, port)
-        _LOGGER.debug(f"test_connection: Got device key: {key}")
-        return key is not None
-    except Exception as e:
-        _LOGGER.error(f"Gree device at {ip_addr} is unreachable: {type(e).__name__}: {e}", exc_info=True)
-        return False
-
-
 async def BindDevice(mac_addr, ip_addr, port, encryption_version=1, max_retries=8):
     """Bind to a device and return its reply, which includes its "key" and its own "mac". Raises on failure."""
     _LOGGER.debug(f"Binding to device at {ip_addr} (encryption version {encryption_version})")
@@ -187,14 +157,6 @@ async def BindDevice(mac_addr, ip_addr, port, encryption_version=1, max_retries=
     return result
 
 
-async def GetDeviceKey(mac_addr, ip_addr, port, max_retries=8):
-    try:
-        return (await BindDevice(mac_addr, ip_addr, port, 1, max_retries))["key"].encode("utf8")
-    except Exception:
-        _LOGGER.debug("Error getting device encryption key!")
-        return None
-
-
 def GetGCMCipher(key):
     cipher = AES.new(key, AES.MODE_GCM, nonce=GCM_IV)
     cipher.update(GCM_ADD)
@@ -207,14 +169,6 @@ def EncryptGCM(key, plaintext):
     pack = base64.b64encode(encrypted_data).decode("utf-8")
     tag = base64.b64encode(tag).decode("utf-8")
     return (pack, tag)
-
-
-async def GetDeviceKeyGCM(mac_addr, ip_addr, port, max_retries=8):
-    try:
-        return (await BindDevice(mac_addr, ip_addr, port, 2, max_retries))["key"].encode("utf8")
-    except Exception:
-        _LOGGER.debug("Error getting device encryption key!")
-        return None
 
 
 async def discover_gree_devices(hass, timeout=5):
@@ -326,31 +280,3 @@ async def discover_gree_devices(hass, timeout=5):
 
     _LOGGER.debug(f"Discovery completed, found {len(devices)} devices")
     return devices
-
-
-async def detect_device_encryption(mac_addr, ip_addr, port):
-    """Test which encryption version a device uses for communication."""
-    _LOGGER.debug(f"Detecting encryption version for device {mac_addr} at {ip_addr}:{port}")
-
-    # Test encryption version 1 first
-    try:
-        _LOGGER.debug(f"Testing encryption version 1 for device {mac_addr}")
-        key = await GetDeviceKey(mac_addr, ip_addr, port, max_retries=1)
-        if key:
-            _LOGGER.debug(f"Device {mac_addr} uses encryption version 1")
-            return 1
-    except Exception as e:
-        _LOGGER.debug(f"Encryption version 1 failed for device {mac_addr}: {e}")
-
-    # Test encryption version 2
-    try:
-        _LOGGER.debug(f"Testing encryption version 2 for device {mac_addr}")
-        key = await GetDeviceKeyGCM(mac_addr, ip_addr, port, max_retries=1)
-        if key:
-            _LOGGER.debug(f"Device {mac_addr} uses encryption version 2")
-            return 2
-    except Exception as e:
-        _LOGGER.debug(f"Encryption version 2 failed for device {mac_addr}: {e}")
-
-    _LOGGER.error(f"Could not determine encryption version for device {mac_addr}")
-    return None

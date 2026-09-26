@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -24,7 +25,7 @@ from .const import (
     STATE_TO_MODE,
     BASE_COMMAND_PROPS,
 )
-from .device import GreeHeatPumpClient
+from .device import GreeHeatPumpClient, WrongDeviceError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,13 +35,15 @@ COMMAND_ATTEMPTS = 3
 READBACK_DELAY = 1.0
 # The command is already acknowledged, so the read-back is a quick check rather than a full poll
 READBACK_RETRIES = 3
+# Attempts for the bind that checks whether the device's key changed after a poll got no reply
+REBIND_RETRIES = 3
 
 
 class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Polls the heat pump and exposes its state in domain terms."""
 
-    def __init__(self, hass: HomeAssistant, client: GreeHeatPumpClient, name: str) -> None:
-        super().__init__(hass, _LOGGER, name=name, update_interval=SCAN_INTERVAL)
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: GreeHeatPumpClient, name: str) -> None:
+        super().__init__(hass, _LOGGER, config_entry=entry, name=name, update_interval=SCAN_INTERVAL)
         self.client = client
         # Commands resend the full base state, so they must be built from the latest data. Holding this
         # lock for every command and poll stops two commands (or a command and a slow poll carrying old
@@ -51,8 +54,27 @@ class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         async with self._lock:
             try:
                 return await self.client.get(POLLED_PROPS)
+            except TimeoutError as err:
+                # No reply at all. Besides an outage, this is what a changed key looks like: the device
+                # ignores requests it can't decrypt. Binding still works, so check for a new key.
+                if await self._rebind():
+                    try:
+                        return await self.client.get(POLLED_PROPS)
+                    except Exception as retry_err:
+                        raise UpdateFailed(f"Error communicating with heat pump: {retry_err}") from retry_err
+                raise UpdateFailed(f"Error communicating with heat pump: {err}") from err
             except Exception as err:
                 raise UpdateFailed(f"Error communicating with heat pump: {err}") from err
+
+    async def _rebind(self) -> bool:
+        """Bind to pick up a new key. Returns True if the key changed."""
+        try:
+            return await self.client.bind(max_retries=REBIND_RETRIES)
+        except WrongDeviceError as err:
+            raise UpdateFailed(f"{err}. If the heat pump's IP address changed, use Reconfigure") from err
+        except Exception as err:
+            _LOGGER.debug("Bind after a missed poll failed too (%s); the heat pump is unreachable", err)
+            return False
 
     # --- Derived state -------------------------------------------------
 

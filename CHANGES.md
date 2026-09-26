@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.5.0 (2026-09-27)
+
+### Added
+
+- **The encryption key is saved after the first connection,** so startup no longer has to ask the heat pump for its key each time. Setups made before this version save it on their next start.
+- **A changed key is picked up automatically.** The heat pump's key changes when its Wi-Fi module is reset or re-paired. Requests encrypted with the old key then get no reply. When a poll gets no reply, the integration binds once more, using Gree's generic key, which still works:
+  - **A different key comes back:** it's used and saved, and the integration carries on within that poll. The log notes that the key changed.
+  - **The same key comes back:** it's reported as a normal outage.
+  - **A different heat pump answers** at that address: the error suggests using Reconfigure.
+- **Reconfigure saves the heat pump's current key** along with the new address.
+
+### Changed
+
+- **Setup uses the same connection code as the rest of the integration.** Manual setup and discovery now check that the heat pump answering is the one with the entered MAC address, so a mistyped MAC shows a clear error. Discovery detects the encryption version by connecting with each in turn.
+- Removed the original project's separate connection test, which also wrote the encryption key to the debug log.
+
 ## 4.4.1 (2026-09-26)
 
 No changes in behaviour. This release adds automated testing and publishes versions as GitHub releases.

@@ -45,6 +45,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: GreeHeatPumpConfigEntry) -> bool:
     """Set up the heat pump from a config entry."""
     data = entry.data
+
+    def save_key(key: str) -> None:
+        """Keep the key the heat pump gave us, so startup doesn't need to bind every time."""
+        if entry.data.get(CONF_ENCRYPTION_KEY):
+            _LOGGER.info("The heat pump's encryption key changed (its Wi-Fi module was probably reset); saved the new key")
+        hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_ENCRYPTION_KEY: key})
+
     client = GreeHeatPumpClient(
         host=data[CONF_HOST],
         port=data.get(CONF_PORT, DEFAULT_PORT),
@@ -52,8 +59,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: GreeHeatPumpConfigEntry)
         encryption_version=data.get(CONF_ENCRYPTION_VERSION, 1),
         encryption_key=data.get(CONF_ENCRYPTION_KEY),
         uid=data.get(CONF_UID),
+        on_key_change=save_key,
     )
-    coordinator = GreeHeatPumpCoordinator(hass, client, data.get(CONF_NAME, entry.title))
+    coordinator = GreeHeatPumpCoordinator(hass, entry, client, data.get(CONF_NAME, entry.title))
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 

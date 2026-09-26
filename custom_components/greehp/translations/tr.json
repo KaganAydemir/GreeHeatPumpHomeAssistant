@@ -2,7 +2,7 @@
   "config": {
     "error": {
       "cannot_connect": "Cihaza bağlanılamadı. Ağ bağlantısını kontrol edip tekrar deneyin.",
-      "wrong_device": "Bu adreste farklı bir Gree cihazı yanıt verdi. IP adresini kontrol edin."
+      "wrong_device": "Bu adreste farklı bir Gree cihazı yanıt verdi. IP adresini ve elle girdiyseniz MAC adresini kontrol edin."
     },
     "abort": {
       "already_configured": "Bu MAC adresine sahip bir cihaz zaten yapılandırılmış.",

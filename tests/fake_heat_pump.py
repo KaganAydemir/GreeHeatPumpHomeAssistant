@@ -59,9 +59,13 @@ class FakeHeatPump(asyncio.DatagramProtocol):
     encryption_version: 1 (ECB) or 2 (GCM).
     """
 
-    def __init__(self, state: dict[str, Any] | None = None, mac: str = MAC, encryption_version: int = 1) -> None:
+    def __init__(
+        self, state: dict[str, Any] | None = None, mac: str = MAC, encryption_version: int = 1, key: str = DEVICE_KEY
+    ) -> None:
         self.state = dict(DEFAULT_STATE if state is None else state)
         self.mac = mac
+        # Change this to simulate a Wi-Fi module reset: requests with the old key are then ignored
+        self.key = key
         self.encryption_version = encryption_version
         self.drop: set[int] = set()
         self.ignore_commands = 0
@@ -108,7 +112,7 @@ class FakeHeatPump(asyncio.DatagramProtocol):
             return  # A real device ignores what it can't decrypt
 
         if request["t"] == "bind":
-            reply = {"t": "bindok", "mac": self.mac, "key": DEVICE_KEY, "r": 200}
+            reply = {"t": "bindok", "mac": self.mac, "key": self.key, "r": 200}
             self._reply(reply, addr, generic_key=True, delay=self.reply_delay)
         elif request["t"] == "status":
             self.reads += 1
@@ -129,14 +133,14 @@ class FakeHeatPump(asyncio.DatagramProtocol):
     def _decrypt(self, envelope: dict[str, Any]) -> dict[str, Any] | None:
         raw = base64.b64decode(envelope["pack"])
         if self.encryption_version == 1:
-            for key in (GENERIC_GREE_DEVICE_KEY.encode(), DEVICE_KEY.encode()):
+            for key in (GENERIC_GREE_DEVICE_KEY.encode(), self.key.encode()):
                 text = AES.new(key, AES.MODE_ECB).decrypt(raw).decode("utf-8", "ignore")
                 try:
                     return json.loads(text[: text.rindex("}") + 1])
                 except ValueError:
                     continue
             return None
-        for key in (GENERIC_GREE_DEVICE_KEY_GCM, DEVICE_KEY.encode()):
+        for key in (GENERIC_GREE_DEVICE_KEY_GCM, self.key.encode()):
             cipher = GetGCMCipher(key)
             try:
                 text = cipher.decrypt(raw).decode("utf-8")
@@ -149,10 +153,10 @@ class FakeHeatPump(asyncio.DatagramProtocol):
     def _encrypt(self, reply: dict[str, Any], generic_key: bool) -> bytes:
         text = json.dumps(reply)
         if self.encryption_version == 1:
-            key = GENERIC_GREE_DEVICE_KEY.encode() if generic_key else DEVICE_KEY.encode()
+            key = GENERIC_GREE_DEVICE_KEY.encode() if generic_key else self.key.encode()
             pack = base64.b64encode(AES.new(key, AES.MODE_ECB).encrypt(Pad(text).encode())).decode()
             return json.dumps({"t": "pack", "pack": pack}).encode()
-        key = GENERIC_GREE_DEVICE_KEY_GCM if generic_key else DEVICE_KEY.encode()
+        key = GENERIC_GREE_DEVICE_KEY_GCM if generic_key else self.key.encode()
         pack, tag = EncryptGCM(key, text)
         return json.dumps({"t": "pack", "pack": pack, "tag": tag}).encode()
 

@@ -28,7 +28,7 @@ from .const import (
     DOMAIN,
 )
 from .device import GreeHeatPumpClient, WrongDeviceError
-from .gree_protocol import test_connection, discover_gree_devices, detect_device_encryption
+from .gree_protocol import discover_gree_devices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +42,28 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._data: dict[str, any] = {}
         self._discovered_devices: list[dict] = []
         self._selected_device: dict | None = None
+        self._client: GreeHeatPumpClient | None = None
+
+    async def _connect(
+        self, host: str, port: int, mac: str, versions: list[int], key: str | None = None, uid: int | None = None
+    ) -> str | None:
+        """Connect with the first encryption version that works. Returns an error key, or None on success.
+
+        On success the connected client, which holds the heat pump's current key, is kept in self._client.
+        """
+        for version in versions:
+            client = GreeHeatPumpClient(host, port, mac, encryption_version=version, encryption_key=key or None, uid=uid)
+            try:
+                await client.verify()
+            except WrongDeviceError as err:
+                _LOGGER.debug("Setup: %s", err)
+                return "wrong_device"
+            except Exception as err:
+                _LOGGER.debug("Setup: no connection to %s with encryption version %s: %s", host, version, err)
+                continue
+            self._client = client
+            return None
+        return "cannot_connect"
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
         """Handle the initial step - show discovery or manual entry."""
@@ -102,81 +124,30 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="discovery", data_schema=data_schema, description_placeholders={"devices_found": str(len(self._discovered_devices))})
 
     async def async_step_detect_encryption(self, user_input: dict | None = None) -> FlowResult:
-        """Detect encryption version and configure device."""
+        """Connect to the discovered device, detecting its encryption version, then ask for a name."""
+        device = self._selected_device
         if user_input is not None:
-            # User entered device name, proceed with setup
-            device_name = user_input[CONF_NAME]
-
-            # Create final configuration
-            self._data = {
-                CONF_NAME: device_name,
-                CONF_HOST: self._selected_device["host"],
-                CONF_MAC: self._selected_device["mac"],
-                CONF_PORT: self._selected_device["port"],
-                CONF_ENCRYPTION_KEY: "",
-                CONF_ENCRYPTION_VERSION: self._selected_device["encryption_version"],
-            }
-
-            # Test the connection
-            is_connection_valid = await test_connection(self._data)
-            if not is_connection_valid:
-                return self.async_show_form(
-                    step_id="detect_encryption",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Required(CONF_NAME, default=device_name): str,
-                        }
-                    ),
-                    errors={"base": "cannot_connect"},
-                )
-
-            return self.async_create_entry(title=device_name, data=self._data)
-
-        # Detect encryption version for selected device
-        mac_addr = self._selected_device["mac"]
-        ip_addr = self._selected_device["host"]
-        port = self._selected_device["port"]
-
-        encryption_version = await detect_device_encryption(mac_addr, ip_addr, port)
-
-        if encryption_version is None:
-            # Could not detect encryption, pre-fill manual form with discovered device info
-            self._data = {
-                CONF_NAME: self._selected_device["name"],
-                CONF_HOST: self._selected_device["host"],
-                CONF_MAC: self._selected_device["mac"],
-                CONF_PORT: self._selected_device["port"],
-                CONF_ENCRYPTION_KEY: "",
-                CONF_ENCRYPTION_VERSION: 1,  # Default to version 1
-            }
-            # Show manual form with error about encryption detection failure
-            return self.async_show_form(
-                step_id="manual",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(CONF_NAME, default=self._data.get(CONF_NAME, "")): str,
-                        vol.Required(CONF_HOST, default=self._data.get(CONF_HOST, "")): str,
-                        vol.Required(CONF_MAC, default=self._data.get(CONF_MAC, "")): str,
-                        vol.Required(CONF_PORT, default=self._data.get(CONF_PORT, DEFAULT_PORT)): int,
-                        vol.Optional(CONF_ENCRYPTION_KEY, default=self._data.get(CONF_ENCRYPTION_KEY, "")): str,
-                        vol.Optional(CONF_UID): int,
-                        vol.Optional(CONF_ENCRYPTION_VERSION, default=self._data.get(CONF_ENCRYPTION_VERSION, 1)): int,
-                    }
-                ),
-                errors={"base": "cannot_connect"},
+            return self.async_create_entry(
+                title=user_input[CONF_NAME],
+                data={
+                    CONF_NAME: user_input[CONF_NAME],
+                    CONF_HOST: device["host"],
+                    CONF_MAC: device["mac"],
+                    CONF_PORT: device["port"],
+                    CONF_ENCRYPTION_KEY: self._client.key,
+                    CONF_ENCRYPTION_VERSION: self._client.encryption_version,
+                },
             )
 
-        # Store detected encryption version
-        self._selected_device["encryption_version"] = encryption_version
+        if error := await self._connect(device["host"], device["port"], device["mac"], versions=[1, 2]):
+            # Fall back to the manual form, prefilled with what discovery found
+            self._data = {CONF_NAME: device["name"], CONF_HOST: device["host"], CONF_MAC: device["mac"], CONF_PORT: device["port"]}
+            return self._show_manual_form(self._data, {"base": error})
 
-        # Show device naming form with detected info
-        data_schema = vol.Schema(
-            {
-                vol.Required(CONF_NAME, default=self._selected_device["name"]): str,
-            }
+        return self.async_show_form(
+            step_id="detect_encryption",
+            data_schema=vol.Schema({vol.Required(CONF_NAME, default=device["name"]): str}),
         )
-
-        return self.async_show_form(step_id="detect_encryption", data_schema=data_schema)
 
     async def async_step_manual(self, user_input: dict | None = None) -> FlowResult:
         """Handle manual device entry."""
@@ -188,14 +159,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(self._data[CONF_MAC])
             self._abort_if_unique_id_configured()
 
-            is_connection_valid = await test_connection(self._data)
-            if not is_connection_valid:
-                errors["base"] = "cannot_connect"
+            data = self._data
+            error = await self._connect(
+                data[CONF_HOST],
+                data[CONF_PORT],
+                data[CONF_MAC],
+                versions=[data.get(CONF_ENCRYPTION_VERSION, 1)],
+                key=data.get(CONF_ENCRYPTION_KEY),
+                uid=data.get(CONF_UID),
+            )
+            if error:
+                errors["base"] = error
             else:
-                return self.async_create_entry(title=user_input[CONF_NAME], data=self._data)
+                return self.async_create_entry(title=data[CONF_NAME], data={**data, CONF_ENCRYPTION_KEY: self._client.key})
 
-        # Set defaults from user_input if present, else use hardcoded defaults
-        defaults = user_input or self._data
+        return self._show_manual_form(user_input or self._data, errors)
+
+    def _show_manual_form(self, defaults: dict, errors: dict) -> FlowResult:
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_NAME, default=defaults.get(CONF_NAME, "")): str,
@@ -216,24 +196,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             data = entry.data
-            client = GreeHeatPumpClient(
-                host=user_input[CONF_HOST],
-                port=user_input[CONF_PORT],
-                mac=data[CONF_MAC],
-                encryption_version=data.get(CONF_ENCRYPTION_VERSION, 1),
-                encryption_key=data.get(CONF_ENCRYPTION_KEY),
+            error = await self._connect(
+                user_input[CONF_HOST],
+                user_input[CONF_PORT],
+                data[CONF_MAC],
+                versions=[data.get(CONF_ENCRYPTION_VERSION, 1)],
+                key=data.get(CONF_ENCRYPTION_KEY),
                 uid=data.get(CONF_UID),
             )
-            try:
-                await client.verify()
-            except WrongDeviceError as err:
-                _LOGGER.debug("Reconfigure: %s", err)
-                errors["base"] = "wrong_device"
-            except Exception as err:
-                _LOGGER.debug("Reconfigure: cannot reach %s: %s", user_input[CONF_HOST], err)
-                errors["base"] = "cannot_connect"
+            if error:
+                errors["base"] = error
             else:
-                return self.async_update_reload_and_abort(entry, data_updates=user_input)
+                return self.async_update_reload_and_abort(
+                    entry, data_updates={**user_input, CONF_ENCRYPTION_KEY: self._client.key}
+                )
 
         defaults = user_input or entry.data
         data_schema = vol.Schema(
