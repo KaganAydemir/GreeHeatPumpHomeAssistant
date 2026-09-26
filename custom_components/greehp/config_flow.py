@@ -28,7 +28,7 @@ from .const import (
     DOMAIN,
 )
 from .device import GreeHeatPumpClient, WrongDeviceError
-from .gree_protocol import discover_gree_devices
+from .gree_protocol import async_discover
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_manual()
 
         # Discover devices
-        self._discovered_devices = await discover_gree_devices(self.hass)
+        self._discovered_devices = await async_discover(self.hass)
 
         if not self._discovered_devices:
             # No devices found, go to manual entry

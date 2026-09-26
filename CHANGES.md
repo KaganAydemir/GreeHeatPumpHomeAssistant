@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.6.0 (2026-09-27)
+
+### Fixed
+
+- **Discovery no longer freezes Home Assistant.** While searching for heat pumps during setup, the original code waited for replies in a way that blocked all of Home Assistant for up to 5 seconds: automations, the UI and other integrations paused. It now waits without blocking.
+- **Discovery lists each heat pump once,** even if it answers more than one broadcast address.
+
+### Changed
+
+- **Read properties needs at least one property name.** It used to try a built-in list when none was given, but those four names are known not to exist on these heat pumps.
+- **Tidied the network code** taken from the original project: standard Python names (`async_request`, `async_bind`, `async_discover`) instead of `FetchResult`, `BindDevice` and `discover_gree_devices`; the standard `json` module instead of an optional `simplejson`; and log messages that are only built when debug logging is on.
+
 ## 4.5.0 (2026-09-27)
 
 ### Added

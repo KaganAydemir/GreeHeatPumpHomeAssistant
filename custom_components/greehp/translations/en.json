@@ -109,7 +109,7 @@
   "services": {
     "read_properties": {
       "name": "Read properties",
-      "description": "Reads properties from the heat pump by name and returns what it answers. Read-only: it never changes anything on the heat pump. Leave the list empty to try a built-in list of common Gree property names.",
+      "description": "Reads properties from the heat pump by name and returns what it answers. Read-only: it never changes anything on the heat pump. Names the heat pump doesn't know are listed under no_reply.",
       "fields": {
         "properties": {
           "name": "Properties",

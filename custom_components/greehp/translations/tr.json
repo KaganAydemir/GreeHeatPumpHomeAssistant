@@ -109,7 +109,7 @@
   "services": {
     "read_properties": {
       "name": "Özellikleri oku",
-      "description": "Isı pompasından adıyla verilen özellikleri okur ve gelen yanıtı döndürür. Yalnızca okur; ısı pompasında hiçbir şeyi değiştirmez. Liste boş bırakılırsa bilinen Gree özellik adlarından oluşan hazır bir liste denenir.",
+      "description": "Isı pompasından adıyla verilen özellikleri okur ve gelen yanıtı döndürür. Yalnızca okur; ısı pompasında hiçbir şeyi değiştirmez. Isı pompasının tanımadığı adlar no_reply altında listelenir.",
       "fields": {
         "properties": {
           "name": "Özellikler",

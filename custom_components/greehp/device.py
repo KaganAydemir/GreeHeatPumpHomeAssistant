@@ -10,7 +10,7 @@ from typing import Any
 
 from Crypto.Cipher import AES
 
-from .gree_protocol import BindDevice, EncryptGCM, FetchResult, GetGCMCipher, Pad, RequestStats
+from .gree_protocol import RequestStats, async_bind, async_request, encrypt_gcm, gcm_cipher, pad
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class GreeHeatPumpClient:
         """
         if self.encryption_version not in (1, 2):
             raise ValueError(f"Encryption version {self.encryption_version} is not supported")
-        reply = await BindDevice(self.mac, self.host, self.port, self.encryption_version, max_retries)
+        reply = await async_bind(self.mac, self.host, self.port, self.encryption_version, max_retries)
         if (found := str(reply.get("mac", "")).lower()) != self.mac:
             raise WrongDeviceError(f"Device at {self.host} has MAC {found}, expected {self.mac}")
         key = reply["key"].encode()
@@ -97,13 +97,13 @@ class GreeHeatPumpClient:
 
         key = self._key
         if self.encryption_version == 1:
-            envelope["pack"] = base64.b64encode(AES.new(key, AES.MODE_ECB).encrypt(Pad(plaintext).encode())).decode()
+            envelope["pack"] = base64.b64encode(AES.new(key, AES.MODE_ECB).encrypt(pad(plaintext).encode())).decode()
             make_cipher = lambda: AES.new(key, AES.MODE_ECB)  # noqa: E731
         else:
-            envelope["pack"], envelope["tag"] = EncryptGCM(key, plaintext)
-            make_cipher = lambda: GetGCMCipher(key)  # noqa: E731
+            envelope["pack"], envelope["tag"] = encrypt_gcm(key, plaintext)
+            make_cipher = lambda: gcm_cipher(key)  # noqa: E731
 
-        return await FetchResult(
+        return await async_request(
             make_cipher,
             self.host,
             self.port,

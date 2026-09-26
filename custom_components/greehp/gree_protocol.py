@@ -1,23 +1,18 @@
-"""
-Gree protocol/network logic for Home Assistant integration.
-"""
+"""Gree LAN protocol: encrypted UDP requests, binding and discovery."""
 
-# Standard library imports
+from __future__ import annotations
+
 import asyncio
 import base64
+import json
 import logging
-import socket
-import time
+from collections.abc import Callable
+from typing import Any
 
-# Third-party imports
-try:
-    import simplejson
-except ImportError:
-    import json as simplejson
 from Crypto.Cipher import AES
 
-# Home Assistant imports
 from homeassistant.components.network import async_get_ipv4_broadcast_addresses
+from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,57 +21,84 @@ GCM_ADD = b"qualcomm-test"
 GENERIC_GREE_DEVICE_KEY = "a3K8Bx%2r8Y7#xDh"
 GENERIC_GREE_DEVICE_KEY_GCM = b"{yxAHAY_Lm6pbC/<"
 
+DISCOVERY_PORT = 7000
+DISCOVERY_MESSAGE = b'{"t":"scan"}'
+# Tried in addition to the broadcast addresses Home Assistant knows about
+DEFAULT_BROADCAST_ADDRESSES = ["255.255.255.255", "192.168.255.255", "10.255.255.255", "172.31.255.255"]
+
 # The device answers within ~50ms or not at all, so resend quickly: 1.0s, 1.2s, 1.4s, ...
 RESEND_AFTER = 1.0
 RESEND_BACKOFF = 0.2
 
 
+# --- Encryption ----------------------------------------------------------
+
+
+def pad(text: str) -> str:
+    """PKCS#7 padding to the AES block size, as the devices expect for ECB."""
+    size = 16 - len(text) % 16
+    return text + chr(size) * size
+
+
+def gcm_cipher(key: bytes) -> Any:
+    cipher = AES.new(key, AES.MODE_GCM, nonce=GCM_IV)
+    cipher.update(GCM_ADD)
+    return cipher
+
+
+def encrypt_gcm(key: bytes, plaintext: str) -> tuple[str, str]:
+    """Encrypt for encryption version 2. Returns (pack, tag), both base64."""
+    encrypted, tag = gcm_cipher(key).encrypt_and_digest(plaintext.encode())
+    return base64.b64encode(encrypted).decode(), base64.b64encode(tag).decode()
+
+
+def _decode_reply(make_cipher: Callable[[], Any], data: bytes, encryption_version: int) -> dict[str, Any]:
+    """Decrypt and parse a device reply. A fresh cipher is used for every reply."""
+    envelope = json.loads(data)
+    cipher = make_cipher()
+    decrypted = cipher.decrypt(base64.b64decode(envelope["pack"]))
+    if encryption_version == 2:
+        cipher.verify(base64.b64decode(envelope["tag"]))
+    # Drop padding and anything after the last }
+    text = decrypted.decode().replace("\x0f", "")
+    return json.loads(text[: text.rindex("}") + 1])
+
+
+# --- Requests ------------------------------------------------------------
+
+
 class _ReplyProtocol(asyncio.DatagramProtocol):
     """Queues datagrams arriving from one host."""
 
-    def __init__(self, ip_addr):
-        self._ip_addr = ip_addr
-        self.replies = asyncio.Queue()
+    def __init__(self, host: str) -> None:
+        self._host = host
+        self.replies: asyncio.Queue[bytes] = asyncio.Queue()
 
-    def datagram_received(self, data, addr):
-        if addr[0] == self._ip_addr:
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        if addr[0] == self._host:
             self.replies.put_nowait(data)
 
-    def error_received(self, exc):
-        _LOGGER.debug(f"Socket error from {self._ip_addr}: {exc}")
-
-
-def _decode_reply(make_cipher, data, encryption_version):
-    """Decrypt and parse a device reply. A fresh cipher is used for every reply."""
-    received_json = simplejson.loads(data)
-    cipher = make_cipher()
-    decrypted_pack = cipher.decrypt(base64.b64decode(received_json["pack"]))
-
-    if encryption_version == 2:
-        cipher.verify(base64.b64decode(received_json["tag"]))
-
-    # Remove padding and trailing data after last }
-    clean_text = decrypted_pack.decode("utf-8").replace("\x0f", "")
-    return simplejson.loads(clean_text[: clean_text.rindex("}") + 1])
+    def error_received(self, exc: Exception) -> None:
+        _LOGGER.debug("Socket error from %s: %s", self._host, exc)
 
 
 class RequestStats:
     """Counts how many attempts requests needed, to show how often the device drops them."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.requests = 0
         self.failed = 0
         # {attempts needed: number of requests}
-        self.succeeded_on_attempt = {}
+        self.succeeded_on_attempt: dict[int, int] = {}
 
-    def record(self, attempts, ok):
+    def record(self, attempts: int, ok: bool) -> None:
         self.requests += 1
         if ok:
             self.succeeded_on_attempt[attempts] = self.succeeded_on_attempt.get(attempts, 0) + 1
         else:
             self.failed += 1
 
-    def as_dict(self):
+    def as_dict(self) -> dict[str, Any]:
         return {
             "requests": self.requests,
             "failed": self.failed,
@@ -84,199 +106,155 @@ class RequestStats:
         }
 
 
-async def FetchResult(make_cipher, ip_addr, port, json_data, encryption_version=1, max_retries=8, stats=None):
+async def async_request(
+    make_cipher: Callable[[], Any],
+    host: str,
+    port: int,
+    payload: str,
+    encryption_version: int = 1,
+    max_retries: int = 8,
+    stats: RequestStats | None = None,
+) -> dict[str, Any]:
     """Send a request to a Gree device and return its decrypted reply.
 
-    One socket is kept open for the whole request, so a reply that arrives after its
-    attempt timed out is still accepted instead of being lost. If `stats` (a RequestStats)
-    is given, the number of attempts is recorded in it.
+    One socket is kept open for the whole request, so a reply that arrives after its attempt timed
+    out is still accepted instead of being lost. If `stats` is given, the attempts are recorded in it.
+    Raises TimeoutError if the device never answers, ConnectionError if it only sends garbage.
     """
-
-    _LOGGER.debug(f"Fetching device at: {ip_addr}:{port}, data sent: {json_data})")
+    _LOGGER.debug("Sending to %s:%s: %s", host, port, payload)
 
     loop = asyncio.get_running_loop()
-    transport, protocol = await loop.create_datagram_endpoint(lambda: _ReplyProtocol(ip_addr), local_addr=("0.0.0.0", 0))
-    payload = json_data.encode("utf-8")
-    last_error = None
+    transport, protocol = await loop.create_datagram_endpoint(lambda: _ReplyProtocol(host), local_addr=("0.0.0.0", 0))
+    data_out = payload.encode()
+    last_error: Exception | None = None
 
     try:
         for attempt in range(max_retries):
-            transport.sendto(payload, (ip_addr, port))
+            transport.sendto(data_out, (host, port))
             deadline = loop.time() + RESEND_AFTER + attempt * RESEND_BACKOFF
 
             while (remaining := deadline - loop.time()) > 0:
                 try:
                     data = await asyncio.wait_for(protocol.replies.get(), timeout=remaining)
-                except asyncio.TimeoutError as e:
-                    last_error = e
+                except TimeoutError as err:
+                    last_error = err
                     break
                 try:
                     result = _decode_reply(make_cipher, data, encryption_version)
-                except Exception as e:
-                    # Garbled or unexpected packet; keep waiting for a valid one
-                    last_error = e
-                    _LOGGER.debug(f"Ignoring undecodable reply from {ip_addr}: {type(e).__name__}: {e}")
+                except Exception as err:  # noqa: BLE001 - any undecodable packet is skipped the same way
+                    last_error = err
+                    _LOGGER.debug("Ignoring undecodable reply from %s: %s: %s", host, type(err).__name__, err)
                     continue
-                _LOGGER.debug(f"Successfully received response on attempt {attempt + 1}")
+                _LOGGER.debug("Reply from %s on attempt %d", host, attempt + 1)
                 if stats is not None:
                     stats.record(attempt + 1, ok=True)
                 return result
     finally:
         transport.close()
 
-    if last_error is None or isinstance(last_error, asyncio.TimeoutError):
-        error = TimeoutError(f"No reply from {ip_addr}:{port} after {max_retries} attempts")
+    if last_error is None or isinstance(last_error, TimeoutError):
+        error: Exception = TimeoutError(f"No reply from {host}:{port} after {max_retries} attempts")
     else:
-        error = ConnectionError(f"Invalid reply from {ip_addr}:{port}: {type(last_error).__name__}: {last_error}")
+        error = ConnectionError(f"Invalid reply from {host}:{port}: {type(last_error).__name__}: {last_error}")
     # Callers decide whether this matters (a missed read-back doesn't), so only note it here
-    _LOGGER.debug(str(error))
+    _LOGGER.debug("%s", error)
     if stats is not None:
         stats.record(max_retries, ok=False)
     raise error from last_error
 
 
-def Pad(s):
-    aesBlockSize = 16
-    return s + (aesBlockSize - len(s) % aesBlockSize) * chr(aesBlockSize - len(s) % aesBlockSize)
-
-
-async def BindDevice(mac_addr, ip_addr, port, encryption_version=1, max_retries=8):
+async def async_bind(mac: str, host: str, port: int, encryption_version: int = 1, max_retries: int = 8) -> dict[str, Any]:
     """Bind to a device and return its reply, which includes its "key" and its own "mac". Raises on failure."""
-    _LOGGER.debug(f"Binding to device at {ip_addr} (encryption version {encryption_version})")
+    _LOGGER.debug("Binding to device at %s (encryption version %s)", host, encryption_version)
+    # The message text is kept exactly as devices are known to accept it
     if encryption_version == 1:
-        cipher = AES.new(GENERIC_GREE_DEVICE_KEY.encode("utf8"), AES.MODE_ECB)
-        pack = base64.b64encode(cipher.encrypt(Pad(f'{{"mac":"{mac_addr}","t":"bind","uid":0}}').encode("utf8"))).decode("utf-8")
-        payload = f'{{"cid": "app","i": 1,"pack": "{pack}","t":"pack","tcid":"{mac_addr}","uid": 0}}'
-        make_cipher = lambda: AES.new(GENERIC_GREE_DEVICE_KEY.encode("utf8"), AES.MODE_ECB)  # noqa: E731
+        generic_key = GENERIC_GREE_DEVICE_KEY.encode()
+        encrypted = AES.new(generic_key, AES.MODE_ECB).encrypt(pad(f'{{"mac":"{mac}","t":"bind","uid":0}}').encode())
+        pack = base64.b64encode(encrypted).decode()
+        payload = f'{{"cid": "app","i": 1,"pack": "{pack}","t":"pack","tcid":"{mac}","uid": 0}}'
+        make_cipher: Callable[[], Any] = lambda: AES.new(generic_key, AES.MODE_ECB)  # noqa: E731
     else:
-        pack, tag = EncryptGCM(GENERIC_GREE_DEVICE_KEY_GCM, f'{{"cid":"{mac_addr}", "mac":"{mac_addr}","t":"bind","uid":0}}')
-        payload = f'{{"cid": "app","i": 1,"pack": "{pack}","t":"pack","tcid":"{mac_addr}","uid": 0, "tag" : "{tag}"}}'
-        make_cipher = lambda: GetGCMCipher(GENERIC_GREE_DEVICE_KEY_GCM)  # noqa: E731
-    result = await FetchResult(make_cipher, ip_addr, port, payload, encryption_version=encryption_version, max_retries=max_retries)
-    _LOGGER.debug(f"Bind reply: { {k: ('**REDACTED**' if k == 'key' else v) for k, v in result.items()} }")
+        pack, tag = encrypt_gcm(GENERIC_GREE_DEVICE_KEY_GCM, f'{{"cid":"{mac}", "mac":"{mac}","t":"bind","uid":0}}')
+        payload = f'{{"cid": "app","i": 1,"pack": "{pack}","t":"pack","tcid":"{mac}","uid": 0, "tag" : "{tag}"}}'
+        make_cipher = lambda: gcm_cipher(GENERIC_GREE_DEVICE_KEY_GCM)  # noqa: E731
+    result = await async_request(make_cipher, host, port, payload, encryption_version, max_retries)
+    _LOGGER.debug("Bind reply: %s", {k: ("**REDACTED**" if k == "key" else v) for k, v in result.items()})
     return result
 
 
-def GetGCMCipher(key):
-    cipher = AES.new(key, AES.MODE_GCM, nonce=GCM_IV)
-    cipher.update(GCM_ADD)
-    return cipher
+# --- Discovery -----------------------------------------------------------
 
 
-def EncryptGCM(key, plaintext):
-    cipher = GetGCMCipher(key)
-    encrypted_data, tag = cipher.encrypt_and_digest(plaintext.encode("utf8"))
-    pack = base64.b64encode(encrypted_data).decode("utf-8")
-    tag = base64.b64encode(tag).decode("utf-8")
-    return (pack, tag)
+class _CollectProtocol(asyncio.DatagramProtocol):
+    """Collects every datagram that arrives, with its sender."""
+
+    def __init__(self) -> None:
+        self.packets: list[tuple[bytes, tuple[str, int]]] = []
+
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        self.packets.append((data, addr))
+
+    def error_received(self, exc: Exception) -> None:
+        _LOGGER.debug("Socket error during discovery: %s", exc)
 
 
-async def discover_gree_devices(hass, timeout=5):
-    """Discover Gree devices on the local network using UDP broadcast."""
-    _LOGGER.debug("Starting Gree device discovery...")
-
-    BROADCAST_PORT = 7000
-    DISCOVERY_MESSAGE = b'{"t":"scan"}'
-
-    # Set up UDP socket for broadcast
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    sock.settimeout(timeout)
-    sock.bind(("", 0))
-
-    devices = []
-
+def _parse_scan_reply(data: bytes, addr: tuple[str, int], port: int) -> dict[str, Any] | None:
+    """Turn a scan reply into device info, or None if it isn't one. Scan replies use the generic ECB key."""
     try:
-        # Default broadcast addresses to try
-        broadcast_addresses = [
-            "255.255.255.255",  # Limited broadcast
-            "192.168.255.255",  # /16 broadcast for 192.168.x.x networks
-            "10.255.255.255",  # /8 broadcast for 10.x.x.x networks
-            "172.31.255.255",  # /12 broadcast for 172.16-31.x.x networks
-        ]
+        envelope = json.loads(data.decode(errors="ignore"))
+        decrypted = AES.new(GENERIC_GREE_DEVICE_KEY.encode(), AES.MODE_ECB).decrypt(base64.b64decode(envelope["pack"]))
+        text = decrypted.decode(errors="ignore").replace("\x0f", "")
+        info = json.loads(text[: text.rindex("}") + 1])
+    except (ValueError, KeyError, TypeError) as err:
+        _LOGGER.debug("Ignoring unreadable discovery reply from %s: %s", addr, err)
+        return None
+    if info.get("t") != "dev" or not (mac := info.get("mac")):
+        _LOGGER.debug("Ignoring discovery reply from %s without device info", addr)
+        return None
+    return {
+        "name": info.get("name") or f"Gree {mac[-4:]}",
+        "host": addr[0],
+        "port": port,
+        "mac": mac,
+        "brand": info.get("brand", "gree"),
+        "model": info.get("model", "gree"),
+        "version": info.get("ver", ""),
+    }
 
-        # Get broadcast addresses from Home Assistant's network helper
+
+async def async_discover(
+    hass: HomeAssistant, timeout: float = 5.0, port: int = DISCOVERY_PORT, addresses: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """Find Gree devices by broadcasting a scan, without blocking the event loop.
+
+    Each device is listed once, even if it answers several broadcast addresses. `addresses` replaces the
+    default broadcast addresses; `port` is the port devices listen on.
+    """
+    if addresses is None:
+        addresses = list(DEFAULT_BROADCAST_ADDRESSES)
         try:
-            ha_broadcast_addresses = await async_get_ipv4_broadcast_addresses(hass)
-            ha_broadcast_strings = [str(addr) for addr in ha_broadcast_addresses]
-            broadcast_addresses.extend(ha_broadcast_strings)
-            _LOGGER.debug(f"Found broadcast addresses from HA: {ha_broadcast_strings}")
-        except Exception as e:
-            _LOGGER.debug(f"Could not get HA broadcast addresses: {e}")
+            addresses += [str(address) for address in await async_get_ipv4_broadcast_addresses(hass)]
+        except Exception as err:  # noqa: BLE001 - the defaults still work without Home Assistant's list
+            _LOGGER.debug("Could not get Home Assistant's broadcast addresses: %s", err)
+        addresses = list(dict.fromkeys(addresses))
 
-        # Remove duplicates
-        broadcast_addresses = list(dict.fromkeys(broadcast_addresses))
-
-        # Send to all broadcast addresses
-        for broadcast_addr in broadcast_addresses:
+    loop = asyncio.get_running_loop()
+    transport, protocol = await loop.create_datagram_endpoint(
+        _CollectProtocol, local_addr=("0.0.0.0", 0), allow_broadcast=True
+    )
+    try:
+        for address in addresses:
             try:
-                _LOGGER.debug(f"Sending discovery to {broadcast_addr}")
-                sock.sendto(DISCOVERY_MESSAGE, (broadcast_addr, BROADCAST_PORT))
-            except Exception as e:
-                _LOGGER.debug(f"Failed to send to {broadcast_addr}: {e}")
-
-        _LOGGER.debug("Sent discovery packets, waiting for replies...")
-
-        start = time.time()
-        while time.time() - start < timeout:
-            try:
-                data, addr = sock.recvfrom(1024)
-                try:
-                    # Try to parse as JSON and decrypt if possible
-                    response = simplejson.loads(data.decode(errors="ignore"))
-                    if "pack" in response:
-                        pack = response["pack"]
-                        decoded_pack = base64.b64decode(pack)
-
-                        # Discovery responses typically use level 1 encryption (ECB mode)
-                        # But we need to test which encryption the device actually uses for communication
-                        pack_json = None
-
-                        try:
-                            cipher = AES.new(GENERIC_GREE_DEVICE_KEY.encode("utf-8"), AES.MODE_ECB)
-                            decrypted_pack = cipher.decrypt(decoded_pack)
-                            # Remove null bytes and trailing data after last }
-                            decoded_text = decrypted_pack.decode("utf-8", errors="ignore").replace("\x0f", "")
-                            last_brace = decoded_text.rfind("}")
-                            if last_brace != -1:
-                                clean_text = decoded_text[: last_brace + 1]
-                            else:
-                                clean_text = decoded_text
-                            pack_json = simplejson.loads(clean_text)
-                            _LOGGER.debug(f"Decrypted discovery response from {addr}")
-                        except Exception as e:
-                            _LOGGER.debug(f"Could not decrypt discovery response from {addr}: {e}")
-                            continue
-
-                        # If we successfully decrypted and got device info
-                        if pack_json and pack_json.get("t") == "dev":
-                            mac_addr = pack_json.get("mac", "")
-                            if not mac_addr:
-                                _LOGGER.debug(f"No MAC address in response from {addr}")
-                                continue
-
-                            # Just collect basic device info for now - encryption detection happens later
-                            device_info = {
-                                "name": pack_json.get("name", "") or f"Gree {mac_addr[-4:]}",
-                                "host": addr[0],
-                                "port": BROADCAST_PORT,
-                                "mac": mac_addr,
-                                "brand": pack_json.get("brand", "gree"),
-                                "model": pack_json.get("model", "gree"),
-                                "version": pack_json.get("ver", ""),
-                            }
-                            devices.append(device_info)
-                            _LOGGER.debug(f"Discovered Gree device: {device_info}")
-                        else:
-                            _LOGGER.debug(f"Invalid or missing device info from {addr}")
-                    else:
-                        _LOGGER.debug(f"Received response without pack from {addr}: {response}")
-                except Exception as e:
-                    _LOGGER.debug(f"Could not parse response from {addr}: {e}")
-            except socket.timeout:
-                break
+                transport.sendto(DISCOVERY_MESSAGE, (address, port))
+            except OSError as err:
+                _LOGGER.debug("Could not send discovery to %s: %s", address, err)
+        await asyncio.sleep(timeout)
     finally:
-        sock.close()
+        transport.close()
 
-    _LOGGER.debug(f"Discovery completed, found {len(devices)} devices")
-    return devices
+    devices: dict[str, dict[str, Any]] = {}
+    for data, addr in protocol.packets:
+        if (device := _parse_scan_reply(data, addr, port)) and device["mac"] not in devices:
+            devices[device["mac"]] = device
+    _LOGGER.debug("Discovery found %d device(s): %s", len(devices), list(devices.values()))
+    return list(devices.values())

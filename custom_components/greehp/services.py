@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, Supp
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
-from .const import CANDIDATE_PROPS, DOMAIN
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ PROBE_RETRIES = 3
 
 READ_PROPERTIES_SCHEMA = vol.Schema(
     {
-        vol.Optional(ATTR_PROPERTIES): vol.All(cv.ensure_list, [cv.string]),
+        vol.Required(ATTR_PROPERTIES): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
     }
 )
@@ -37,8 +37,9 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def read_properties(call: ServiceCall) -> ServiceResponse:
         """Read arbitrary properties from the heat pump. Read-only; never changes the device."""
         # Accept a list, or names separated by commas/spaces in a single string
-        names = [n for item in call.data.get(ATTR_PROPERTIES, []) for n in re.split(r"[,\s]+", item) if n]
-        names = list(dict.fromkeys(names)) or CANDIDATE_PROPS
+        names = list(dict.fromkeys(n for item in call.data[ATTR_PROPERTIES] for n in re.split(r"[,\s]+", item) if n))
+        if not names:
+            raise ServiceValidationError("Enter at least one property name")
 
         coordinator = _get_coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
         client = coordinator.client

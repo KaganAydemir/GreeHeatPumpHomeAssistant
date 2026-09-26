@@ -1,7 +1,8 @@
 read_properties:
   fields:
     properties:
-      example: "OutEnvTem, AllOutWatTemHi, AllOutWatTemLo"
+      required: true
+      example: "AllOutWatTemHi, AllOutWatTemLo"
       selector:
         text:
           multiple: true

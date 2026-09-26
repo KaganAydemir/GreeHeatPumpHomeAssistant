@@ -15,11 +15,12 @@ from typing import Any
 from Crypto.Cipher import AES
 
 from custom_components.greehp.gree_protocol import (
+    DISCOVERY_MESSAGE,
     GENERIC_GREE_DEVICE_KEY,
     GENERIC_GREE_DEVICE_KEY_GCM,
-    EncryptGCM,
-    GetGCMCipher,
-    Pad,
+    encrypt_gcm,
+    gcm_cipher,
+    pad,
 )
 
 DEVICE_KEY = "3Kl6No9Qr2Tu5Wx8"
@@ -106,6 +107,12 @@ class FakeHeatPump(asyncio.DatagramProtocol):
         self.requests += 1
         if self.requests in self.drop:
             return
+        if data == DISCOVERY_MESSAGE:
+            # Scan replies are always encrypted with the generic ECB key
+            info = {"t": "dev", "mac": self.mac, "name": "", "brand": "gree", "model": "gree", "ver": "V1.2.1"}
+            pack = base64.b64encode(AES.new(GENERIC_GREE_DEVICE_KEY.encode(), AES.MODE_ECB).encrypt(pad(json.dumps(info)).encode()))
+            self._transport.sendto(json.dumps({"t": "pack", "pack": pack.decode()}).encode(), addr)
+            return
         envelope = json.loads(data)
         request = self._decrypt(envelope)
         if request is None:
@@ -141,7 +148,7 @@ class FakeHeatPump(asyncio.DatagramProtocol):
                     continue
             return None
         for key in (GENERIC_GREE_DEVICE_KEY_GCM, self.key.encode()):
-            cipher = GetGCMCipher(key)
+            cipher = gcm_cipher(key)
             try:
                 text = cipher.decrypt(raw).decode("utf-8")
                 cipher.verify(base64.b64decode(envelope["tag"]))
@@ -154,10 +161,10 @@ class FakeHeatPump(asyncio.DatagramProtocol):
         text = json.dumps(reply)
         if self.encryption_version == 1:
             key = GENERIC_GREE_DEVICE_KEY.encode() if generic_key else self.key.encode()
-            pack = base64.b64encode(AES.new(key, AES.MODE_ECB).encrypt(Pad(text).encode())).decode()
+            pack = base64.b64encode(AES.new(key, AES.MODE_ECB).encrypt(pad(text).encode())).decode()
             return json.dumps({"t": "pack", "pack": pack}).encode()
         key = GENERIC_GREE_DEVICE_KEY_GCM if generic_key else self.key.encode()
-        pack, tag = EncryptGCM(key, text)
+        pack, tag = encrypt_gcm(key, text)
         return json.dumps({"t": "pack", "pack": pack, "tag": tag}).encode()
 
     def _reply(self, reply: dict[str, Any], addr: tuple[str, int], generic_key: bool = False, delay: float = 0.0) -> None:

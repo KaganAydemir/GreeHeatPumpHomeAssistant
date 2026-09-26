@@ -63,15 +63,6 @@ POLLED_PROPS = [
 # Properties always included in a command, alongside whatever is being changed
 BASE_COMMAND_PROPS = [PROP_POWER, PROP_MODE, PROP_DHW_SET, PROP_HEATING_SET]
 
-# Probed by the read_properties action when no list is given. These are guesses for the
-# outside temperature, following this unit's Hi/Lo naming; "OutEnvTem" is not supported.
-CANDIDATE_PROPS = [
-    "OutEnvTemHi",
-    "OutEnvTemLo",
-    "EnvTemHi",
-    "EnvTemLo",
-]
-
 # Space conditioning states
 SPACE_OFF = "off"
 SPACE_HEAT = "heat"

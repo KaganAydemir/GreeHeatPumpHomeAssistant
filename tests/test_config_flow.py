@@ -46,7 +46,7 @@ async def test_manual_setup_wrong_mac(hass: HomeAssistant, pump: FakeHeatPump) -
 
 async def discover(hass: HomeAssistant, pump: FakeHeatPump):
     found = [{"name": "Gree 1234", "host": "127.0.0.1", "port": pump.port, "mac": MAC}]
-    with patch("custom_components.greehp.config_flow.discover_gree_devices", return_value=found):
+    with patch("custom_components.greehp.config_flow.async_discover", return_value=found):
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {"discovery": "discover"})
         assert result["step_id"] == "discovery"

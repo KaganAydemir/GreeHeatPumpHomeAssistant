@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 
+import pytest
+import voluptuous as vol
+
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.greehp.const import DOMAIN
 from custom_components.greehp.diagnostics import async_get_config_entry_diagnostics
@@ -17,6 +21,13 @@ async def test_read_properties(hass: HomeAssistant, entry, pump: FakeHeatPump) -
         DOMAIN, "read_properties", {"properties": ["TemUn, OutEnvTem", "AllInWatTemHi"]}, blocking=True, return_response=True
     )
     assert response == {"values": {"TemUn": 0, "AllInWatTemHi": 124}, "no_reply": ["OutEnvTem"]}
+
+
+async def test_read_properties_requires_names(hass: HomeAssistant, entry) -> None:
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(DOMAIN, "read_properties", {}, blocking=True, return_response=True)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "read_properties", {"properties": [" , "]}, blocking=True, return_response=True)
 
 
 async def test_read_properties_falls_back_to_one_at_a_time(hass: HomeAssistant, entry, pump: FakeHeatPump) -> None:

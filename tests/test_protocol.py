@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
+from homeassistant.core import HomeAssistant
+
 from custom_components.greehp.device import GreeHeatPumpClient, WrongDeviceError
+from custom_components.greehp.gree_protocol import async_discover
 
 from .fake_heat_pump import DEVICE_KEY, MAC, FakeHeatPump
 
@@ -84,3 +89,27 @@ async def test_verify_checks_identity(pump: FakeHeatPump) -> None:
             await client_for(other).verify()
     finally:
         other.close()
+
+
+async def test_discovery_lists_each_device_once(hass: HomeAssistant, pump: FakeHeatPump) -> None:
+    """A device that answers several broadcast addresses is listed once."""
+    devices = await async_discover(hass, timeout=0.2, port=pump.port, addresses=["127.0.0.1", "127.0.0.1"])
+    assert devices == [
+        {"name": "Gree cb02", "host": "127.0.0.1", "port": pump.port, "mac": MAC, "brand": "gree", "model": "gree", "version": "V1.2.1"}
+    ]
+
+
+async def test_discovery_does_not_block_home_assistant(hass: HomeAssistant, pump: FakeHeatPump) -> None:
+    """Other work keeps running while discovery waits for replies."""
+    ticks = 0
+
+    async def tick() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    ticker = asyncio.create_task(tick())
+    await async_discover(hass, timeout=0.3, port=pump.port, addresses=["127.0.0.1"])
+    ticker.cancel()
+    assert ticks >= 10
