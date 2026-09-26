@@ -9,7 +9,7 @@ from typing import Any
 
 from Crypto.Cipher import AES
 
-from .gree_protocol import EncryptGCM, FetchResult, GetDeviceKey, GetDeviceKeyGCM, GetGCMCipher, Pad
+from .gree_protocol import EncryptGCM, FetchResult, GetDeviceKey, GetDeviceKeyGCM, GetGCMCipher, Pad, RequestStats
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ class GreeHeatPumpClient:
         self.encryption_version = encryption_version
         self._key: bytes | None = encryption_key.encode() if encryption_key else None
         self._uid = uid or 0
+        self.stats = RequestStats()
 
     async def _ensure_key(self) -> None:
         if self._key:
@@ -71,6 +72,7 @@ class GreeHeatPumpClient:
             json.dumps(envelope, separators=(",", ":")),
             encryption_version=self.encryption_version,
             max_retries=max_retries,
+            stats=self.stats,
         )
 
     async def get(self, props: list[str], max_retries: int = 8) -> dict[str, Any]:

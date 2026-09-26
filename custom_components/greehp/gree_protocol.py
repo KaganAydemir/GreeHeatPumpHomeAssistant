@@ -60,11 +60,36 @@ def _decode_reply(make_cipher, data, encryption_version):
     return simplejson.loads(clean_text[: clean_text.rindex("}") + 1])
 
 
-async def FetchResult(make_cipher, ip_addr, port, json_data, encryption_version=1, max_retries=8):
+class RequestStats:
+    """Counts how many attempts requests needed, to show how often the device drops them."""
+
+    def __init__(self):
+        self.requests = 0
+        self.failed = 0
+        # {attempts needed: number of requests}
+        self.succeeded_on_attempt = {}
+
+    def record(self, attempts, ok):
+        self.requests += 1
+        if ok:
+            self.succeeded_on_attempt[attempts] = self.succeeded_on_attempt.get(attempts, 0) + 1
+        else:
+            self.failed += 1
+
+    def as_dict(self):
+        return {
+            "requests": self.requests,
+            "failed": self.failed,
+            "succeeded_on_attempt": dict(sorted(self.succeeded_on_attempt.items())),
+        }
+
+
+async def FetchResult(make_cipher, ip_addr, port, json_data, encryption_version=1, max_retries=8, stats=None):
     """Send a request to a Gree device and return its decrypted reply.
 
     One socket is kept open for the whole request, so a reply that arrives after its
-    attempt timed out is still accepted instead of being lost.
+    attempt timed out is still accepted instead of being lost. If `stats` (a RequestStats)
+    is given, the number of attempts is recorded in it.
     """
 
     _LOGGER.debug(f"Fetching device at: {ip_addr}:{port}, data sent: {json_data})")
@@ -94,6 +119,8 @@ async def FetchResult(make_cipher, ip_addr, port, json_data, encryption_version=
                     _LOGGER.debug(f"Ignoring undecodable reply from {ip_addr}: {type(e).__name__}: {e}")
                     continue
                 _LOGGER.debug(f"Successfully received response on attempt {attempt + 1}")
+                if stats is not None:
+                    stats.record(attempt + 1, ok=True)
                 return result
     finally:
         transport.close()
@@ -104,6 +131,8 @@ async def FetchResult(make_cipher, ip_addr, port, json_data, encryption_version=
         error = ConnectionError(f"Invalid reply from {ip_addr}:{port}: {type(last_error).__name__}: {last_error}")
     # Callers decide whether this matters (a missed read-back doesn't), so only note it here
     _LOGGER.debug(str(error))
+    if stats is not None:
+        stats.record(max_retries, ok=False)
     raise error from last_error
 
 

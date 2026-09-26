@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.2.0 (2026-09-26)
+
+### Added
+
+- **Diagnostics download** (device page → ⋮ → Download diagnostics). The file contains:
+  - The integration's settings, with the encryption key, IP address, MAC address and UID redacted.
+  - The raw values the heat pump reported, and how the integration interprets them.
+  - The result of the last update.
+  - Request statistics since Home Assistant started: how many requests needed 1, 2, 3 or more attempts, and how many failed. This shows how often the heat pump drops requests.
+
 ## 4.1.1 (2026-09-26)
 
 ### Fixed

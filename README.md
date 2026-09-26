@@ -44,6 +44,10 @@ Copy `custom_components/greehp` into `/config/custom_components/` and restart Ho
 
 Settings → Devices & services → Add integration → **Gree Heat Pump**, then choose automatic discovery or enter the IP and MAC address by hand. Give the heat pump a fixed IP address in your router so it doesn't change.
 
+## Diagnostics
+
+On the device page, open ⋮ → **Download diagnostics** for a file with the heat pump's raw values and statistics on how many attempts requests needed. The encryption key, IP address, MAC address and UID are redacted, so the file is safe to attach to an issue.
+
 ## Finding more properties
 
 The `greehp.read_properties` action (Developer Tools → Actions) reads any property names from the heat pump and returns what it answers. It only reads, so it can't change anything. The heat pump leaves out names it doesn't know, so every name that comes back with a value is a real property.
