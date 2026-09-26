@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+
+# Original code before the rewrite, kept locally only
+greehp_backup_original/

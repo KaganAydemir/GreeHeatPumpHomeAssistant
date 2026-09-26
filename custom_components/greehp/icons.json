@@ -1,0 +1,50 @@
+{
+  "entity": {
+    "climate": {
+      "space": {
+        "default": "mdi:radiator"
+      }
+    },
+    "water_heater": {
+      "hot_water": {
+        "default": "mdi:water-boiler"
+      }
+    },
+    "sensor": {
+      "tank_temperature": {
+        "default": "mdi:thermometer-water"
+      },
+      "water_inlet_temperature": {
+        "default": "mdi:thermometer-chevron-down"
+      },
+      "water_outlet_temperature": {
+        "default": "mdi:thermometer-chevron-up"
+      }
+    },
+    "binary_sensor": {
+      "tank_heater": {
+        "default": "mdi:heating-coil"
+      },
+      "backup_heater_1": {
+        "default": "mdi:heating-coil"
+      },
+      "backup_heater_2": {
+        "default": "mdi:heating-coil"
+      },
+      "anti_freeze": {
+        "default": "mdi:snowflake-thermometer"
+      },
+      "fast_hot_water": {
+        "default": "mdi:water-boiler-alert"
+      }
+    },
+    "switch": {
+      "quiet": {
+        "default": "mdi:volume-off",
+        "state": {
+          "off": "mdi:volume-high"
+        }
+      }
+    }
+  }
+}

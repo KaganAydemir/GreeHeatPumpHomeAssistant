@@ -1,0 +1,11 @@
+read_properties:
+  fields:
+    properties:
+      example: "OutEnvTem, AllOutWatTemHi, AllOutWatTemLo"
+      selector:
+        text:
+          multiple: true
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: greehp

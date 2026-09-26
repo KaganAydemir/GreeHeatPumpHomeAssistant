@@ -1,0 +1,115 @@
+{
+  "config": {
+    "error": {
+      "cannot_connect": "Cihaza bağlanılamadı. Ağ bağlantısını kontrol edip tekrar deneyin."
+    },
+    "abort": {
+      "already_configured": "Bu MAC adresine sahip bir cihaz zaten yapılandırılmış."
+    },
+    "step": {
+      "user": {
+        "title": "Gree Isı Pompası Kurulumu",
+        "description": "Gree ısı pompanızı nasıl eklemek istediğinizi seçin",
+        "data": {
+          "discovery": "Kurulum yöntemi"
+        }
+      },
+      "discovery": {
+        "title": "Bulunan Cihazlar",
+        "description": "{devices_found} Gree cihazı bulundu. Eklemek için birini seçin.",
+        "data": {
+          "device": "Cihaz"
+        }
+      },
+      "detect_encryption": {
+        "title": "Cihazı Yapılandır",
+        "description": "Cihaza bağlanıldı. Bu cihaz için bir ad girin.",
+        "data": {
+          "name": "Cihaz adı"
+        }
+      },
+      "manual": {
+        "title": "Manuel Kurulum",
+        "description": "Gree ısı pompanızın bilgilerini girin",
+        "data": {
+          "name": "Ad",
+          "host": "IP adresi",
+          "port": "Port",
+          "mac": "MAC adresi",
+          "encryption_key": "Şifreleme anahtarı",
+          "uid": "UID",
+          "encryption_version": "Şifreleme sürümü"
+        }
+      }
+    }
+  },
+  "selector": {
+    "discovery_method": {
+      "options": {
+        "discover": "Cihazları otomatik bul",
+        "manual": "Cihazı manuel ekle"
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "space": {
+        "name": "Kalorifer / Soğutma"
+      }
+    },
+    "water_heater": {
+      "hot_water": {
+        "name": "Boyler"
+      }
+    },
+    "sensor": {
+      "tank_temperature": {
+        "name": "Boyler sıcaklığı"
+      },
+      "water_inlet_temperature": {
+        "name": "Su giriş sıcaklığı"
+      },
+      "water_outlet_temperature": {
+        "name": "Su çıkış sıcaklığı"
+      }
+    },
+    "binary_sensor": {
+      "tank_heater": {
+        "name": "Boyler elektrikli ısıtıcısı"
+      },
+      "backup_heater_1": {
+        "name": "Yedek ısıtıcı 1"
+      },
+      "backup_heater_2": {
+        "name": "Yedek ısıtıcı 2"
+      },
+      "anti_freeze": {
+        "name": "Donma koruması"
+      },
+      "fast_hot_water": {
+        "name": "Hızlı sıcak su"
+      }
+    },
+    "switch": {
+      "quiet": {
+        "name": "Sessiz mod"
+      }
+    }
+  },
+  "services": {
+    "read_properties": {
+      "name": "Özellikleri oku",
+      "description": "Isı pompasından adıyla verilen özellikleri okur ve gelen yanıtı döndürür. Yalnızca okur; ısı pompasında hiçbir şeyi değiştirmez. Liste boş bırakılırsa bilinen Gree özellik adlarından oluşan hazır bir liste denenir.",
+      "fields": {
+        "properties": {
+          "name": "Özellikler",
+          "description": "Okunacak özellik adları, örneğin OutEnvTem. Birden fazla adı virgülle ayırarak da girebilirsiniz."
+        },
+        "config_entry_id": {
+          "name": "Isı pompası",
+          "description": "Yalnızca birden fazla ısı pompası kuruluysa gerekir."
+        }
+      }
+    }
+  }
+}

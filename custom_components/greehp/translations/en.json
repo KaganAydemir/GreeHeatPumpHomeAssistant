@@ -1,0 +1,115 @@
+{
+  "config": {
+    "error": {
+      "cannot_connect": "Unable to connect to the device. Please check the network connection and try again."
+    },
+    "abort": {
+      "already_configured": "A device with this MAC address is already configured."
+    },
+    "step": {
+      "user": {
+        "title": "Gree Heat Pump Setup",
+        "description": "Choose how to add your Gree heat pump",
+        "data": {
+          "discovery": "Setup method"
+        }
+      },
+      "discovery": {
+        "title": "Discovered Devices",
+        "description": "Found {devices_found} Gree device(s). Select one to add.",
+        "data": {
+          "device": "Device"
+        }
+      },
+      "detect_encryption": {
+        "title": "Configure Device",
+        "description": "Device connection successful. Enter a name for this device.",
+        "data": {
+          "name": "Device name"
+        }
+      },
+      "manual": {
+        "title": "Manual Setup",
+        "description": "Enter the details for your Gree heat pump",
+        "data": {
+          "name": "Name",
+          "host": "IP address",
+          "port": "Port",
+          "mac": "MAC address",
+          "encryption_key": "Encryption key",
+          "uid": "UID",
+          "encryption_version": "Encryption version"
+        }
+      }
+    }
+  },
+  "selector": {
+    "discovery_method": {
+      "options": {
+        "discover": "Discover devices automatically",
+        "manual": "Add device manually"
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "space": {
+        "name": "Heating / Cooling"
+      }
+    },
+    "water_heater": {
+      "hot_water": {
+        "name": "Hot water"
+      }
+    },
+    "sensor": {
+      "tank_temperature": {
+        "name": "Tank temperature"
+      },
+      "water_inlet_temperature": {
+        "name": "Water inlet temperature"
+      },
+      "water_outlet_temperature": {
+        "name": "Water outlet temperature"
+      }
+    },
+    "binary_sensor": {
+      "tank_heater": {
+        "name": "Tank electric heater"
+      },
+      "backup_heater_1": {
+        "name": "Backup heater 1"
+      },
+      "backup_heater_2": {
+        "name": "Backup heater 2"
+      },
+      "anti_freeze": {
+        "name": "Anti-freeze protection"
+      },
+      "fast_hot_water": {
+        "name": "Fast hot water"
+      }
+    },
+    "switch": {
+      "quiet": {
+        "name": "Quiet mode"
+      }
+    }
+  },
+  "services": {
+    "read_properties": {
+      "name": "Read properties",
+      "description": "Reads properties from the heat pump by name and returns what it answers. Read-only: it never changes anything on the heat pump. Leave the list empty to try a built-in list of common Gree property names.",
+      "fields": {
+        "properties": {
+          "name": "Properties",
+          "description": "Property names to read, for example OutEnvTem. You can also enter several separated by commas."
+        },
+        "config_entry_id": {
+          "name": "Heat pump",
+          "description": "Only needed if more than one heat pump is set up."
+        }
+      }
+    }
+  }
+}
