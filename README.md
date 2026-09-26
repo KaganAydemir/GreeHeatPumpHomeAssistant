@@ -51,3 +51,9 @@ The `greehp.read_properties` action (Developer Tools → Actions) reads any prop
 ## Changes
 
 See [CHANGES.md](CHANGES.md) for the rewrite from the original air-conditioner integration and what has been tested.
+
+## License and credits
+
+This project is derived from [HomeAssistant-GreeClimateComponent](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent) by Rob Hofmann and contributors, which is licensed under GPL-3.0. It was rewritten for air-to-water heat pumps in September 2026 and is also licensed under the [GNU General Public License v3.0](LICENSE).
+
+This is an independent project. It isn't affiliated with the original project or with Gree Electric Appliances.
