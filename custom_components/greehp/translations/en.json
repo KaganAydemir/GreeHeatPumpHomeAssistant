@@ -95,14 +95,14 @@
       },
       "anti_freeze": {
         "name": "Anti-freeze protection"
-      },
-      "fast_hot_water": {
-        "name": "Fast hot water"
       }
     },
     "switch": {
       "quiet": {
         "name": "Quiet mode"
+      },
+      "fast_hot_water": {
+        "name": "Fast hot water"
       }
     }
   },

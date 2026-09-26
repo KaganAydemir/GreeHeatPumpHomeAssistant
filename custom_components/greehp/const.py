@@ -38,7 +38,7 @@ PROP_TANK_HEATER = "WatBoxElcHeRunSta"  # Tank electric heater running
 PROP_HEATER_1 = "ElcHe1RunSta"  # Electric backup heater 1 running
 PROP_HEATER_2 = "ElcHe2RunSta"  # Electric backup heater 2 running
 PROP_ANTI_FREEZE = "AnFrzzRunSta"  # Anti-freeze protection active
-PROP_FAST_HOT_WATER = "FastHtWter"  # Fast hot water mode (read-only here; writing is untested)
+PROP_FAST_HOT_WATER = "FastHtWter"  # Fast hot water mode
 
 # Properties polled every update
 POLLED_PROPS = [

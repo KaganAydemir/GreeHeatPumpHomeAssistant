@@ -16,12 +16,20 @@ from .coordinator import GreeHeatPumpCoordinator
 from .device import GreeHeatPumpClient
 from .sensor import TEMPERATURE_SENSORS
 from .services import async_register_services
+from .switch import SWITCHES
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.CLIMATE, Platform.WATER_HEATER, Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SWITCH]
-# Every entity this integration creates; anything else registered for the entry is removed as stale
-ENTITY_KEYS = ["space", "hot_water", "quiet", *TEMPERATURE_SENSORS, *STATUS_SENSORS]
+# Every entity this integration creates, as (platform, key). Anything else registered for the entry is
+# removed as stale, including an entity whose key moved to another platform.
+EXPECTED_ENTITIES = {
+    (Platform.CLIMATE, "space"),
+    (Platform.WATER_HEATER, "hot_water"),
+    *((Platform.SENSOR, key) for key in TEMPERATURE_SENSORS),
+    *((Platform.BINARY_SENSOR, key) for key in STATUS_SENSORS),
+    *((Platform.SWITCH, key) for key in SWITCHES),
+}
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -60,10 +68,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: GreeHeatPumpConfigEntry
 
 
 def _remove_stale_entities(hass: HomeAssistant, entry: ConfigEntry, mac: str) -> None:
-    """Drop entities left over from the old AC-based implementation."""
+    """Drop entities left over from older versions."""
     registry = er.async_get(hass)
-    expected = {f"{mac}_{key}" for key in ENTITY_KEYS}
+    expected = {(str(platform), f"{mac}_{key}") for platform, key in EXPECTED_ENTITIES}
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if entity.unique_id not in expected:
+        if (entity.domain, entity.unique_id) not in expected:
             _LOGGER.info("Removing stale entity %s", entity.entity_id)
             registry.async_remove(entity.entity_id)

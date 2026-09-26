@@ -95,14 +95,14 @@
       },
       "anti_freeze": {
         "name": "Donma koruması"
-      },
-      "fast_hot_water": {
-        "name": "Hızlı sıcak su"
       }
     },
     "switch": {
       "quiet": {
         "name": "Sessiz mod"
+      },
+      "fast_hot_water": {
+        "name": "Hızlı sıcak su"
       }
     }
   },

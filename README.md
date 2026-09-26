@@ -11,8 +11,9 @@ Based on [RobHofmann/HomeAssistant-GreeClimateComponent](https://github.com/RobH
 | Heating / Cooling | `climate` | Off / Heat / Cool for the radiators. Target is the flow (water outlet) temperature: 20–65 °C when heating, 5–25 °C when cooling. |
 | Hot water | `water_heater` | Hot water tank on/off and target temperature (40–80 °C). |
 | Tank, water inlet and water outlet temperature | `sensor` | Measured temperatures. |
-| Tank electric heater, backup heaters 1 and 2, anti-freeze, fast hot water | `binary_sensor` | Status flags. |
+| Tank electric heater, backup heaters 1 and 2, anti-freeze | `binary_sensor` | Status flags. |
 | Quiet mode | `switch` | Quiet operation on/off. |
+| Fast hot water | `switch` | Fast hot water mode on/off. |
 
 Heating/cooling and hot water are controlled independently; the integration sends the matching `Pow`/`Mod` combination:
 

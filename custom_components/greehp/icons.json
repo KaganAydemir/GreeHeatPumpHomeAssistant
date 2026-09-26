@@ -33,9 +33,6 @@
       },
       "anti_freeze": {
         "default": "mdi:snowflake-thermometer"
-      },
-      "fast_hot_water": {
-        "default": "mdi:water-boiler-alert"
       }
     },
     "switch": {
@@ -43,6 +40,12 @@
         "default": "mdi:volume-off",
         "state": {
           "off": "mdi:volume-high"
+        }
+      },
+      "fast_hot_water": {
+        "default": "mdi:water-boiler-alert",
+        "state": {
+          "off": "mdi:water-boiler"
         }
       }
     }

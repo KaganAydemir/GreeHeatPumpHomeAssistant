@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import PROP_ANTI_FREEZE, PROP_FAST_HOT_WATER, PROP_HEATER_1, PROP_HEATER_2, PROP_TANK_HEATER
+from .const import PROP_ANTI_FREEZE, PROP_HEATER_1, PROP_HEATER_2, PROP_TANK_HEATER
 from .coordinator import GreeHeatPumpCoordinator
 from .entity import GreeHeatPumpEntity
 
@@ -19,7 +19,6 @@ STATUS_SENSORS = {
     "backup_heater_1": (PROP_HEATER_1, RUNNING),
     "backup_heater_2": (PROP_HEATER_2, RUNNING),
     "anti_freeze": (PROP_ANTI_FREEZE, RUNNING),
-    "fast_hot_water": (PROP_FAST_HOT_WATER, None),  # A mode, shown as on/off
 }
 
 

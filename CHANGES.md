@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.4.0 (2026-09-26)
+
+### Changed
+
+- **Fast hot water is now a switch** instead of a read-only sensor. It sends `FastHtWter` and is confirmed by the read-back check, so if the heat pump doesn't accept it, Home Assistant shows an error and the switch stays off. Writing this property hasn't been tested on a real unit yet.
+- The old fast hot water sensor is removed automatically. The startup cleanup now compares entity type as well as ID, so an entity that changes type doesn't linger as unavailable.
+
 ## 4.3.0 (2026-09-26)
 
 ### Added
@@ -135,5 +142,5 @@ These properties were found by capturing the Gree app's traffic and confirmed on
 ## Known issues and limitations
 
 - **Switching to Heat or Cool** (`Mod 4`, `Mod 3`, `Mod 1`, `Mod 5`) follows the mode table but hasn't been tested on a real unit yet. Power, hot water, setpoints and quiet mode have been tested.
-- **Fast hot water** is read-only. Writing `FastHtWter` hasn't been tested.
+- **Fast hot water:** turning it on or off from Home Assistant hasn't been confirmed on a real unit. Some models may only allow it while hot water is on.
 - **Inlet and outlet decoding:** these temperatures are assumed to use the same encoding as the tank temperature. That fits the observed values but hasn't been checked against the unit's display.
