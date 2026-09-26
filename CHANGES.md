@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.1.0 (2026-09-26)
+
+### Added
+
+- **Commands are checked after sending.** The heat pump sometimes acknowledges a command without applying it. After each command, the integration reads the heat pump's values back:
+  - If the change shows up, that read becomes the new state straight away.
+  - If it doesn't, the integration waits a second and reads again, in case the heat pump is just slow. If the change still hasn't applied, it resends the command, up to 3 sends in total.
+  - If none of them apply, Home Assistant shows an error such as `Heat pump didn't apply {'WatBoxTemSet': 44} after 3 attempts`, and the entities keep showing the real values.
+  - If the read-back gets no reply, the command is assumed to have applied, because the heat pump did acknowledge it.
+
 ## 4.0.1 (2026-09-26)
 
 ### Fixed
@@ -95,6 +105,5 @@ These properties were found by capturing the Gree app's traffic and confirmed on
 ## Known issues and limitations
 
 - **Switching to Heat or Cool** (`Mod 4`, `Mod 3`, `Mod 1`, `Mod 5`) follows the mode table but hasn't been tested on a real unit yet. Power, hot water, setpoints and quiet mode have been tested.
-- **Commands not applied:** on one occasion the heat pump acknowledged a setpoint change without applying it; sending the command again worked. If this keeps happening, the integration could read the value back after each command and resend.
 - **Fast hot water** is read-only. Writing `FastHtWter` hasn't been tested.
 - **Inlet and outlet decoding:** these temperatures are assumed to use the same encoding as the tank temperature. That fits the observed values but hasn't been checked against the unit's display.

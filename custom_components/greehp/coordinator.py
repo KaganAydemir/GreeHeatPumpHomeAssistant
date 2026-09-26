@@ -28,6 +28,13 @@ from .device import GreeHeatPumpClient
 
 _LOGGER = logging.getLogger(__name__)
 
+# Sends per command, including resends when the device acknowledges without applying
+COMMAND_ATTEMPTS = 3
+# Seconds to wait before a second read-back, in case the device applies the change a little late
+READBACK_DELAY = 1.0
+# The command is already acknowledged, so the read-back is a quick check rather than a full poll
+READBACK_RETRIES = 3
+
 
 class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Polls the heat pump and exposes its state in domain terms."""
@@ -87,7 +94,6 @@ class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Send values to the device, merged with the current base state."""
         async with self._lock:
             await self._send(values)
-        await self.async_request_refresh()
 
     async def async_set_state(self, space_mode: str | None = None, hot_water: bool | None = None) -> None:
         """Set space conditioning and/or hot water; unspecified parts keep their current state."""
@@ -100,14 +106,50 @@ class GreeHeatPumpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._send({PROP_POWER: 0})
             else:
                 await self._send({PROP_POWER: 1, PROP_MODE: STATE_TO_MODE[(space, dhw)]})
-        await self.async_request_refresh()
 
     async def _send(self, values: dict[str, Any]) -> None:
-        """Send a command and apply it optimistically. Caller must hold the lock."""
+        """Send a command and confirm the device applied it, resending if not. Caller must hold the lock.
+
+        The device sometimes acknowledges a command without applying it, so the changed values are read
+        back. That read also becomes the new state, so no separate refresh is needed.
+        """
         payload = {k: self.data[k] for k in BASE_COMMAND_PROPS if self.data.get(k) is not None}
         payload.update(values)
-        try:
-            await self.client.set(payload)
-        except Exception as err:
-            raise HomeAssistantError(f"Failed to send command to heat pump: {err}") from err
-        self.async_set_updated_data({**self.data, **payload})
+
+        for attempt in range(1, COMMAND_ATTEMPTS + 1):
+            try:
+                await self.client.set(payload)
+            except Exception as err:
+                raise HomeAssistantError(f"Failed to send command to heat pump: {err}") from err
+
+            try:
+                current = await self._read_back(values)
+            except Exception as err:
+                # The command was acknowledged; a missed read isn't proof it failed. Assume it applied.
+                _LOGGER.debug("Could not confirm command (%s); assuming it was applied", err)
+                self.async_set_updated_data({**self.data, **payload})
+                return
+
+            self.async_set_updated_data(current)
+            if not (unapplied := _unapplied(values, current)):
+                return
+            if attempt < COMMAND_ATTEMPTS:
+                _LOGGER.warning(
+                    "Heat pump acknowledged but didn't apply %s; resending (attempt %d of %d)",
+                    unapplied, attempt + 1, COMMAND_ATTEMPTS,
+                )
+
+        raise HomeAssistantError(f"Heat pump didn't apply {unapplied} after {COMMAND_ATTEMPTS} attempts")
+
+    async def _read_back(self, values: dict[str, Any]) -> dict[str, Any]:
+        """Read the device state, giving it a moment and a second read if the change hasn't shown up yet."""
+        current = await self.client.get(POLLED_PROPS, max_retries=READBACK_RETRIES)
+        if _unapplied(values, current):
+            await asyncio.sleep(READBACK_DELAY)
+            current = await self.client.get(POLLED_PROPS, max_retries=READBACK_RETRIES)
+        return current
+
+
+def _unapplied(values: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    """The requested values the device doesn't report yet, as {name: requested value}."""
+    return {k: v for k, v in values.items() if current.get(k) != v}
