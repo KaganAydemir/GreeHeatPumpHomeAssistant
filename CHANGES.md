@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.1 (2026-09-26)
+
+### Fixed
+
+- **No more misleading errors in the log.** When all attempts to reach the heat pump failed, the network code logged an error even if the caller recovered, for example when a command's read-back got no reply but the command had been acknowledged. It now logs this at debug level and leaves reporting to the caller:
+  - Failed polls are still logged by Home Assistant, which also marks the entities unavailable.
+  - Failed commands still show as an error in Home Assistant.
+
 ## 4.1.0 (2026-09-26)
 
 ### Added

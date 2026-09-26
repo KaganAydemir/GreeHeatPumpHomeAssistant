@@ -102,7 +102,8 @@ async def FetchResult(make_cipher, ip_addr, port, json_data, encryption_version=
         error = TimeoutError(f"No reply from {ip_addr}:{port} after {max_retries} attempts")
     else:
         error = ConnectionError(f"Invalid reply from {ip_addr}:{port}: {type(last_error).__name__}: {last_error}")
-    _LOGGER.error(str(error))
+    # Callers decide whether this matters (a missed read-back doesn't), so only note it here
+    _LOGGER.debug(str(error))
     raise error from last_error
 
 
